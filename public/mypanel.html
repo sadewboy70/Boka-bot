@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>DCT-MD My Panel</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#020204; --purple:#7B2CBF; --cyan:#00F5FF; --pink:#FF3D9A; }
+  * { font-family:'Plus Jakarta Sans',sans-serif; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  .mono { font-family:'JetBrains Mono',monospace; }
+  html, body { background:var(--bg); color:#fff; min-height:100vh; min-height:100dvh; }
+  body { position:relative; overflow-x:hidden; padding: env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0); }
+
+  .grid-overlay {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: linear-gradient(rgba(255,255,255,0.026) 1px, transparent 1px),
+                         linear-gradient(90deg, rgba(255,255,255,0.026) 1px, transparent 1px);
+      background-size: 34px 34px;
+      -webkit-mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000 25%, transparent 88%);
+      mask-image: radial-gradient(ellipse 85% 65% at 50% 0%, #000 25%, transparent 88%);
+  }
+  .grain-overlay {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .glow { position: fixed; z-index:0; pointer-events:none; border-radius:9999px; filter:blur(95px); animation: float 12s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translate(0,0); } 50% { transform: translate(18px,20px); } }
+
+  .card {
+      position: relative; z-index: 1;
+      background: rgba(255,255,255,0.022);
+      backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px);
+      border:1px solid rgba(255,255,255,0.075);
+      border-radius:18px;
+      box-shadow: 0 25px 60px -20px rgba(0,0,0,0.9), inset 0 1px 1px rgba(255,255,255,0.035);
+      transition: border-color .25s;
+  }
+  .card:hover { border-color: rgba(0,245,255,0.18); }
+  .card.hero::before {
+      content:""; position:absolute; inset:-1px; border-radius:inherit; padding:1px;
+      background: conic-gradient(from var(--rot,0deg), transparent 0deg, rgba(123,44,191,0.5) 60deg, transparent 140deg, rgba(0,245,255,0.4) 230deg, transparent 320deg);
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor; mask-composite: exclude;
+      opacity:.55; animation: rotBorder 7s linear infinite; pointer-events:none; z-index:-1;
+  }
+  @property --rot { syntax: '<angle>'; inherits:false; initial-value:0deg; }
+  @keyframes rotBorder { to { --rot:360deg; } }
+
+  .icon-badge { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:13px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
+  .avatar-ring { width:118px; height:118px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 50% 30%, rgba(0,245,255,0.16), transparent 70%); border:2px solid rgba(0,245,255,0.4); box-shadow:0 0 0 6px rgba(0,245,255,0.05), 0 0 40px -6px rgba(0,245,255,0.35); overflow:hidden; }
+  .avatar-ring svg { border-radius:50%; }
+
+  .btn { border-radius:11px; padding:10px 16px; font-weight:700; font-size:12px; transition:.15s; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; }
+  .btn:active { transform: scale(0.96); }
+  .btn-cyan { background:linear-gradient(90deg,var(--cyan),#00c2ff); color:#001a1d; box-shadow:0 8px 20px rgba(0,245,255,0.14); position:relative; overflow:hidden; }
+  .btn-cyan::after { content:""; position:absolute; top:0; left:-60%; width:40%; height:100%; background:linear-gradient(120deg, transparent, rgba(0,0,0,0.16), transparent); transform:skewX(-20deg); animation: shimmerSweep 3.4s ease-in-out infinite; }
+  @keyframes shimmerSweep { 0% { left:-60%; } 50% { left:130%; } 100% { left:130%; } }
+  .btn-cyan:hover { filter:brightness(1.1); }
+  .btn-outline { border:1px solid rgba(255,255,255,0.15); color:#ddd; background:rgba(255,255,255,0.02); }
+  .btn-outline:hover { border-color:var(--cyan); color:var(--cyan); }
+  .btn-danger { border:1px solid rgba(255,65,108,0.35); color:#FF6B85; background:rgba(255,65,108,0.06); }
+  .btn-danger:hover { border-color:#FF416C; background:rgba(255,65,108,0.12); }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .dot-on { background:#00FF87; box-shadow:0 0 10px #00FF87; animation: pulse 2s ease-in-out infinite; }
+  .dot-off { background:#555; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+  input, textarea { width:100%; background:rgba(255,255,255,0.035); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:10px; padding:10px 12px; font-size:13px; transition: border-color .15s, box-shadow .15s; }
+  input:focus, textarea:focus { outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,245,255,0.08); }
+  ::-webkit-scrollbar { width:6px; }
+  ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:4px; }
+  .trigger-row { background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06); border-radius:12px; transition: border-color .15s; }
+  .trigger-row:hover { border-color: rgba(0,245,255,0.2); }
+  .section-label { font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:rgba(255,255,255,0.35); font-weight:700; }
+</style>
+</head>
+<body class="p-4 md:p-8">
+
+<div class="grid-overlay"></div>
+<div class="grain-overlay"></div>
+<div class="glow w-[280px] h-[280px] bg-purple-600/12 top-[-50px] left-[-50px]"></div>
+<div class="glow w-[280px] h-[280px] bg-cyan-500/12 bottom-[-50px] right-[-50px]" style="animation-delay:-6s"></div>
+
+<div class="max-w-md mx-auto relative z-10">
+
+  <!-- Login -->
+  <div id="loginCard" class="card hero p-7" style="margin-top:6vh;">
+    <div class="avatar-ring mx-auto mb-5">
+      <svg viewBox="0 0 120 120" width="108" height="108">
+        <defs>
+          <clipPath id="avClip"><circle cx="60" cy="60" r="58"/></clipPath>
+          <linearGradient id="avBg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#0c1424"/>
+            <stop offset="1" stop-color="#081018"/>
+          </linearGradient>
+          <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2b2f45"/>
+            <stop offset="1" stop-color="#161826"/>
+          </linearGradient>
+        </defs>
+        <g clip-path="url(#avClip)">
+          <rect width="120" height="120" fill="url(#avBg)"/>
+          <circle cx="30" cy="20" r="30" fill="#00F5FF" opacity=".10"/>
+          <circle cx="95" cy="100" r="34" fill="#7B2CBF" opacity=".14"/>
+          <!-- anime boy bust: original stylized illustration -->
+          <path d="M60 118c0-22 12-30 12-46 0-14-9-24-24-24s-24 10-24 24c0 16 12 24 12 46z" fill="#e8b596"/>
+          <path d="M39 66c-3 8-3 16 0 22h42c3-6 3-14 0-22-4 10-38 10-42 0z" fill="#d99f7d" opacity=".55"/>
+          <path d="M24 44c0-18 13-30 24-30 3 8 10 12 18 13 6 1 10 5 11 10 1 4-1 6-1 10-10-4-13-12-13-12s-2 9-13 13c-10 4-15 2-19 6-2-4-7-3-7 0-2-4 0-10 0-10z" fill="url(#hairGrad)"/>
+          <path d="M20 46c-2 10 0 20 6 26-4-1-9-6-10-14-1-6 1-10 4-12z" fill="url(#hairGrad)"/>
+          <path d="M100 46c2 10 0 20-6 26 4-1 9-6 10-14 1-6-1-10-4-12z" fill="url(#hairGrad)"/>
+          <circle cx="47" cy="58" r="3" fill="#182430"/>
+          <circle cx="73" cy="58" r="3" fill="#182430"/>
+          <path d="M43 50c3-2 7-2 9 0" stroke="#182430" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <path d="M68 50c3-2 7-2 9 0" stroke="#182430" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <path d="M52 68c3 2 13 2 16 0" stroke="#9c5c3f" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+          <path d="M12 78 100 40" stroke="#334155" stroke-width="3" stroke-linecap="round" opacity=".5"/>
+          <path d="M14 76 96 40" stroke="#e5e7eb" stroke-width="2.4" stroke-linecap="round" opacity=".85"/>
+        </g>
+        <circle cx="60" cy="60" r="58" fill="none" stroke="rgba(0,245,255,0.35)" stroke-width="2"/>
+      </svg>
+    </div>
+    <h1 class="text-3xl font-extrabold text-center mono tracking-tight mb-1"><span style="color:var(--cyan)">DCT</span><span class="text-white">-MD</span></h1>
+    <p class="text-[10px] text-center text-white/35 uppercase tracking-[0.32em] mb-5">Dashboard Login</p>
+    <div class="mx-auto mb-6" style="width:64px;height:2px;background:linear-gradient(90deg,transparent,var(--cyan),transparent);"></div>
+
+    <label class="flex items-center gap-1.5 text-[10px] font-bold text-white/45 uppercase tracking-wider mb-1.5">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+      WhatsApp Number
+    </label>
+    <input id="loginNumber" placeholder="94771234567" class="mb-4 rounded-full px-4" style="height:46px;">
+
+    <label class="flex items-center gap-1.5 text-[10px] font-bold text-white/45 uppercase tracking-wider mb-1.5">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+      Bot Password
+    </label>
+    <input id="loginPassword" type="password" placeholder="••••••••" class="mb-6 rounded-full px-4" style="height:46px;" onkeydown="if(event.key==='Enter') login()">
+
+    <button id="loginBtn" onclick="login()" class="btn btn-cyan w-full rounded-full" style="height:50px;font-size:13px;letter-spacing:.08em;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+      LOGIN NOW
+    </button>
+    <p id="loginError" class="text-[11px] text-red-400 mt-3 text-center hidden"></p>
+    <p class="text-[10px] text-white/30 mt-5 text-center">Lost your password? Message <span class="mono">.mypanel</span> to your own bot in WhatsApp.</p>
+
+    <div class="flex items-center justify-center gap-4 mt-6 pt-5" style="border-top:1px solid rgba(255,255,255,0.06);">
+      <span class="flex items-center gap-1 text-[9px] text-white/35 font-bold tracking-wider"><span style="width:6px;height:6px;border-radius:50%;background:#00FF87;box-shadow:0 0 6px #00FF87;display:inline-block;"></span>SECURE</span>
+      <span class="text-[9px] text-white/25 font-bold tracking-wider">V3.0.0</span>
+      <span class="flex items-center gap-1 text-[9px] text-white/35 font-bold tracking-wider"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>ENCRYPTED</span>
+    </div>
+  </div>
+
+
+  <!-- Panel -->
+  <div id="panel" class="hidden">
+    <div class="card p-4 mb-4 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <span id="statusDot" class="dot dot-off"></span>
+        <span id="panelNumber" class="mono text-sm"></span>
+      </div>
+      <button onclick="logout()" class="btn btn-outline text-[10px]">Logout</button>
+    </div>
+
+    <div class="card p-5 mb-4">
+      <p class="text-sm font-bold mb-1 flex items-center gap-2"><span class="icon-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></span> Your Bot Settings</p>
+      <p class="section-label mb-4 mt-2">Configuration</p>
+      <div id="settingsForm" class="space-y-3 text-xs"></div>
+      <button onclick="saveSettings()" class="btn btn-cyan w-full mt-5">Save Settings</button>
+      <p id="saveMsg" class="text-[11px] mt-3 text-center"></p>
+    </div>
+
+    <div class="card p-5 mb-4">
+      <p class="text-sm font-bold mb-1 flex items-center gap-2"><span class="icon-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.93 19.07a10 10 0 0 1 0-14.14M7.76 16.24a6 6 0 0 1 0-8.48m4.24 10.6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm4.24-1.88a6 6 0 0 0 0-8.48m2.83 11.31a10 10 0 0 0 0-14.14"></path></svg></span> My Channel Trial</p>
+      <p class="text-[10px] text-white/40 mb-4">Channels your bot owner added on your behalf for auto-follow/react.</p>
+      <div id="channelTrialList" class="space-y-2"></div>
+      <p id="channelTrialEmpty" class="text-center text-white/30 text-xs py-4 hidden">No channel added for you yet. Ask the bot owner to add one.</p>
+    </div>
+
+    <div class="card p-5">
+      <p class="text-sm font-bold mb-1 flex items-center gap-2"><span class="icon-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span> Auto Reply Triggers</p>
+      <p class="text-[10px] text-white/40 mb-4">No prefix needed — type the trigger, bot replies automatically.</p>
+      <div id="triggerList" class="space-y-2 mb-4"></div>
+      <div class="grid grid-cols-1 gap-2">
+        <input id="newTrigger" placeholder="Trigger (e.g. hi)">
+        <input id="newResponse" placeholder="Response (e.g. hii 👋)">
+        <button onclick="addTrigger()" class="btn btn-cyan w-full">+ Add Trigger</button>
+      </div>
+      <p id="triggerMsg" class="text-[11px] mt-3 text-center"></p>
+    </div>
+  </div>
+</div>
+
+<script>
+let token = sessionStorage.getItem('dct_user_token') || '';
+let myNumber = sessionStorage.getItem('dct_user_number') || '';
+let currentConfig = {};
+let replyList = [];
+
+const BOOL_FIELDS = ['AUTO_REACT','AUTO_READ_STATUS','AUTO_TYPING','ANTILINK','ANTIDELETE','WELCOME','GOODBYE','AUTO_STATUS_REPLY','AUTO_REPLY','AUTO_BLOCK'];
+const TEXT_FIELDS = ['PREFIX','BOT_NAME','WELCOME_MSG','GOODBYE_MSG','AUTO_STATUS_REPLY_TEXT'];
+
+async function api(path, opts = {}) {
+  opts.headers = Object.assign({ 'Content-Type': 'application/json', 'x-user-token': token }, opts.headers || {});
+  const r = await fetch(path, opts);
+  return r.json().catch(() => ({ success:false, error:'Bad response' }));
+}
+
+async function login() {
+  const number = document.getElementById('loginNumber').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  const btn = document.getElementById('loginBtn');
+  const errEl = document.getElementById('loginError');
+  errEl.classList.add('hidden');
+
+  if (!number || !password) {
+    errEl.innerText = 'Number and password ekama danna.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerText = 'Logging in…';
+
+  let res;
+  try {
+    const r = await fetch('/api/user/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ number, password })
+    });
+    res = await r.json().catch(() => null);
+    if (!res) {
+      errEl.innerText = `Server error (HTTP ${r.status}). Try again in a bit.`;
+      errEl.classList.remove('hidden');
+      return;
+    }
+  } catch (netErr) {
+    errEl.innerText = 'Network error — could not reach the server. Check your connection.';
+    errEl.classList.remove('hidden');
+    return;
+  } finally {
+    btn.disabled = false;
+    btn.innerText = 'Login';
+  }
+
+  if (!res.success) {
+    errEl.innerText = res.error || 'Wrong number or password.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  token = res.token;
+  myNumber = res.number;
+  sessionStorage.setItem('dct_user_token', token);
+  sessionStorage.setItem('dct_user_number', myNumber);
+  showPanel();
+}
+
+function logout() {
+  sessionStorage.removeItem('dct_user_token');
+  sessionStorage.removeItem('dct_user_number');
+  token = ''; myNumber = '';
+  document.getElementById('panel').classList.add('hidden');
+  document.getElementById('loginCard').classList.remove('hidden');
+}
+
+async function showPanel() {
+  const res = await api('/api/user/config');
+  if (!res.success) { logout(); return; }
+  currentConfig = res.config || {};
+  replyList = Array.isArray(currentConfig.AUTO_REPLY_LIST) ? currentConfig.AUTO_REPLY_LIST.slice() : [];
+  document.getElementById('loginCard').classList.add('hidden');
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('panelNumber').innerText = '+' + myNumber;
+  document.getElementById('statusDot').className = 'dot ' + (res.connected ? 'dot-on' : 'dot-off');
+  renderForm();
+  renderTriggers();
+  loadChannelTrial();
+  if (!window._channelTrialTimer) window._channelTrialTimer = setInterval(loadChannelTrial, 30000);
+}
+
+function formatTrialRemaining(ms) {
+  if (ms === null) return 'permanent';
+  if (ms <= 0) return 'expired';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const d = Math.floor(h / 24);
+  return d > 0 ? `${d}d ${h % 24}h ${m}m left` : `${h}h ${m}m left`;
+}
+
+async function loadChannelTrial() {
+  try {
+    const res = await api('/api/user/channel-trial');
+    const listEl = document.getElementById('channelTrialList');
+    const emptyEl = document.getElementById('channelTrialEmpty');
+    if (!res.success) return;
+    listEl.innerHTML = '';
+    if (!res.channels.length) { emptyEl.classList.remove('hidden'); return; }
+    emptyEl.classList.add('hidden');
+    res.channels.forEach(c => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.05]';
+      const remaining = formatTrialRemaining(c.msRemaining);
+      const badgeColor = c.expired ? 'border-red-400/30 text-red-300' : 'border-amber-400/30 text-amber-300';
+      row.innerHTML = `
+        <span class="mono text-[11px] truncate">${c.jid}</span>
+        <span class="text-[10px] px-2 py-0.5 rounded-full border ${badgeColor} shrink-0 ml-2">⏳ ${remaining}</span>
+      `;
+      listEl.appendChild(row);
+    });
+  } catch (e) {}
+}
+
+function renderForm() {
+  const form = document.getElementById('settingsForm');
+  form.innerHTML = '';
+
+  const modeWrap = document.createElement('div');
+  const modeVal = currentConfig.WORK_MODE || 'public';
+  modeWrap.innerHTML = `<label class="block text-white/40 mb-1">WORK_MODE</label>
+    <select id="workModeSelect" class="w-full">
+      <option value="public" ${modeVal==='public'?'selected':''}>public</option>
+      <option value="private" ${modeVal==='private'?'selected':''}>private</option>
+      <option value="groups" ${modeVal==='groups'?'selected':''}>groups</option>
+    </select>`;
+  form.appendChild(modeWrap);
+
+  TEXT_FIELDS.forEach(key => {
+    const val = currentConfig[key] || '';
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `<label class="block text-white/40 mb-1">${key}</label>
+      <input data-key="${key}" value="${String(val).replace(/"/g,'&quot;')}">`;
+    form.appendChild(wrap);
+  });
+  const boolWrap = document.createElement('div');
+  boolWrap.className = 'grid grid-cols-2 gap-2 pt-2';
+  BOOL_FIELDS.forEach(key => {
+    const on = !!currentConfig[key];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.key = key;
+    btn.className = 'btn ' + (on ? 'btn-cyan' : 'btn-outline') + ' text-[10px] w-full';
+    btn.innerText = key + (on ? ' : ON' : ' : OFF');
+    btn.onclick = () => {
+      const isOn = btn.className.includes('btn-cyan');
+      btn.className = 'btn ' + (isOn ? 'btn-outline' : 'btn-cyan') + ' text-[10px] w-full';
+      btn.innerText = key + (isOn ? ' : OFF' : ' : ON');
+    };
+    boolWrap.appendChild(btn);
+  });
+  form.appendChild(boolWrap);
+
+  const blWrap = document.createElement('div');
+  blWrap.className = 'pt-3 border-t border-white/10 mt-3';
+  const blacklist = Array.isArray(currentConfig.BLACKLIST) ? currentConfig.BLACKLIST : [];
+  blWrap.innerHTML = `<label class="block text-white/40 mb-1">BLACKLIST (numbers, one per line)</label>
+    <textarea id="blacklistArea" rows="3" class="mono">${blacklist.join('\n')}</textarea>`;
+  form.appendChild(blWrap);
+}
+
+function renderTriggers() {
+  const box = document.getElementById('triggerList');
+  box.innerHTML = '';
+  if (!replyList.length) {
+    box.innerHTML = '<p class="text-[11px] text-white/30">No triggers yet — add one below.</p>';
+    return;
+  }
+  replyList.forEach((pair, i) => {
+    const row = document.createElement('div');
+    row.className = 'trigger-row p-3 flex items-center justify-between gap-2';
+    row.innerHTML = `<div class="flex items-center gap-2.5 min-w-0">
+        <span class="icon-badge" style="width:24px;height:24px;font-size:11px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span>
+        <div class="min-w-0">
+          <p class="mono text-[11px] text-cyan-400 truncate">${pair.trigger}</p>
+          <p class="text-[11px] text-white/60 truncate">${pair.response}</p>
+        </div>
+      </div>`;
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-danger text-[10px] shrink-0';
+    delBtn.innerText = 'Delete';
+    delBtn.onclick = () => removeTrigger(i);
+    row.appendChild(delBtn);
+    box.appendChild(row);
+  });
+}
+
+async function addTrigger() {
+  const t = document.getElementById('newTrigger').value.trim();
+  const r = document.getElementById('newResponse').value.trim();
+  const msg = document.getElementById('triggerMsg');
+  if (!t || !r) { msg.innerText = '❌ Trigger and response ekama danna.'; return; }
+
+  replyList = replyList.filter(p => p.trigger.toLowerCase() !== t.toLowerCase());
+  replyList.push({ trigger: t, response: r });
+
+  msg.innerText = 'Saving…';
+  const res = await api('/api/user/config', { method:'POST', body: JSON.stringify({ config: { AUTO_REPLY_LIST: replyList, AUTO_REPLY: true } }) });
+  msg.innerText = res.success ? '✅ Trigger added (Auto Reply is now ON)' : ('❌ ' + (res.error || 'Failed'));
+  if (res.success) {
+    currentConfig.AUTO_REPLY = true;
+    renderForm();
+    document.getElementById('newTrigger').value = '';
+    document.getElementById('newResponse').value = '';
+    renderTriggers();
+  }
+}
+
+async function removeTrigger(index) {
+  replyList.splice(index, 1);
+  const msg = document.getElementById('triggerMsg');
+  msg.innerText = 'Removing…';
+  const res = await api('/api/user/config', { method:'POST', body: JSON.stringify({ config: { AUTO_REPLY_LIST: replyList } }) });
+  msg.innerText = res.success ? '🗑️ Trigger removed' : ('❌ ' + (res.error || 'Failed'));
+  renderTriggers();
+}
+
+async function saveSettings() {
+  const form = document.getElementById('settingsForm');
+  const newConfig = {};
+  form.querySelectorAll('input[data-key]').forEach(inp => { newConfig[inp.dataset.key] = inp.value; });
+  form.querySelectorAll('button[data-key]').forEach(btn => { newConfig[btn.dataset.key] = btn.className.includes('btn-cyan'); });
+  const modeSel = document.getElementById('workModeSelect');
+  if (modeSel) newConfig.WORK_MODE = modeSel.value;
+  const blArea = document.getElementById('blacklistArea');
+  if (blArea) newConfig.BLACKLIST = blArea.value.split('\n').map(s => s.trim()).filter(Boolean);
+
+  document.getElementById('saveMsg').innerText = 'Saving…';
+  const res = await api('/api/user/config', { method:'POST', body: JSON.stringify({ config: newConfig }) });
+  document.getElementById('saveMsg').innerText = res.success ? '✅ Saved' : ('❌ ' + (res.error || 'Failed'));
+}
+
+if (token && myNumber) showPanel().catch(() => logout());
+</script>
+</body>
+</html>
+
