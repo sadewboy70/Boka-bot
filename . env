@@ -1,0 +1,17 @@
+# ⚠️ THIS FILE HAS YOUR REAL SECRETS — NEVER commit it to GitHub, NEVER share this zip publicly.
+# It is already listed in .gitignore so a normal "git add ." + push will NOT include it.
+
+# ⚠️ This is the SAME URI that was previously hardcoded in config.js (and therefore was
+# already visible to anyone who had this project's code/zip). Putting it back in here — as an
+# env var, not in the source code — is the safer way to reuse it, but the password itself has
+# already been exposed once. Rotating it (MongoDB Atlas -> Database Access -> user -> Edit ->
+# reset password) is still the only way to be 100% sure nobody else can connect to your DB.
+MONGODB_URI=mongodb+srv://hefev36887_db_user:XGpfGuVniL4ah1wE@cluster0.njv9jlm.mongodb.net/?appName=Cluster0
+
+ADMIN_KEY=HASHUU
+
+OWNER_NUMBER=2290192298433
+
+PANEL_BASE_URL=https://dct-mini-server3-production.up.railway.app
+
+PORT=3000
