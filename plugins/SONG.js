@@ -3,6 +3,7 @@ const axios = require('axios');
 const yts = require('yt-search');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const config = require('../config');
 
 cmd({
@@ -32,7 +33,6 @@ async (conn, mek, m, {
         }
         const data = search.videos[0];
 
-        // 🟢 2. SEND THUMBNAIL AND DETAILS 🟢
         await conn.sendMessage(from, {
             image: { url: data.thumbnail },
             caption:
@@ -50,81 +50,90 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 3. NEW API REQUEST (Supun API) 🟢
-        const apiKey = "supun-ecjevwrksqz9q5m6rnbmgmqe";
-        const apiUrl = `https://supunofc.site/api/download/ytmp3-down?url=${encodeURIComponent(data.url)}&apikey=${apiKey}`;
+        // 🟢 2. PROXIED API REQUESTS (To bypass GitHub IP Block) 🟢
+        let downloadUrl = '';
 
-        const response = await axios.get(apiUrl, { timeout: 25000 });
-        const res = response.data;
-
-        // 🟢 4. VALIDATE API RESPONSE 🟢
-        if (!res || !res.success || !res.result || res.result.length === 0) {
-            console.log("Invalid API Response:", res);
-            return reply("❌ *API දෝෂයක්. කරුණාකර පසුව උත්සාහ කරන්න.*");
+        // 🎯 API 1: Cloudflare Worker API (googlevideo ලින්ක් එක Cloudflare හරහා හංගලා දෙයි)
+        try {
+            const workerApi = `https://ytdl.udmodzz.workers.dev/?url=${encodeURIComponent(data.url)}&type=aud`;
+            const res1 = await axios.get(workerApi, { timeout: 20000 });
+            if (res1.data && res1.data.links && res1.data.links["128kbps"]) {
+                downloadUrl = res1.data.links["128kbps"]; 
+                console.log("✅ Using Cloudflare Worker Proxy Link");
+            }
+        } catch (e1) {
+            console.log("⚠️ Worker API Failed. Switching to Backup...");
         }
 
-        // Get the first audio track download URL
-        const audioUrl = res.result[0].downloadUrl;
-        const fileName = `${data.title}.mp3`;
+        // 🎯 API 2: David Cyril Proxy API (ඔවුන්ගේ සර්වර් එක හරහා ඩවුන්ලෝඩ් කරලා දෙන එකක්)
+        if (!downloadUrl) {
+            try {
+                const proxyApi = `https://apis.davidcyril.name.ng/download/ytmp33?url=${encodeURIComponent(data.url)}`;
+                const res2 = await axios.get(proxyApi, { timeout: 20000 });
+                if (res2.data?.success && res2.data?.result?.download_url) {
+                    downloadUrl = res2.data.result.download_url;
+                    console.log("✅ Using Server Proxy Link");
+                }
+            } catch (e2) {
+                console.log("⚠️ Backup Proxy API Failed.");
+            }
+        }
 
-        console.log("AUDIO DOWNLOAD URL =>", audioUrl);
+        if (!downloadUrl) {
+            return reply("❌ *Server කාර්යබහුලයි. කරුණාකර පසුව උත්සාහ කරන්න.*");
+        }
 
-        // 🟢 5. DOWNLOAD & SEND AUDIO (Anti-Block Proxy Method) 🟢
-        const filePath = path.join(__dirname, `song_${Date.now()}.mp3`);
+        // 🟢 3. DOWNLOAD & SEND AUDIO 🟢
+        const tempPath = path.join(os.tmpdir(), `song_${Date.now()}.mp3`);
 
         try {
-            // Buffer හරහා Download කිරීම (Heroku/Railway වගේ සර්වර්ස් වල Block වෙන එක වළක්වන්න)
-            const audioRes = await axios({
-                url: audioUrl,
-                method: "GET",
-                responseType: "arraybuffer",
-                headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "*/*",
-                    "Referer": "https://www.youtube.com/"
-                },
-                timeout: 60000 // ලොකු සින්දු එහෙම ගන්න වෙලා යන නිසා Timeout එක 60s කළා
+            // දැන් මේ ලින්ක් එක Proxied එකක් නිසා GitHub IP එකෙන් Block වෙන්නේ නෑ!
+            const audioStream = await axios({
+                method: 'GET',
+                url: downloadUrl,
+                responseType: 'stream',
+                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+                timeout: 60000
             });
 
-            // WRITE FILE TO DISK
-            fs.writeFileSync(filePath, audioRes.data);
+            const writer = fs.createWriteStream(tempPath);
+            audioStream.data.pipe(writer);
 
-            // SEND AUDIO TO WHATSAPP
+            await new Promise((resolve, reject) => {
+                writer.on('finish', resolve);
+                writer.on('error', reject);
+            });
+
+            // WhatsApp එකට යැවීම
             await conn.sendMessage(from, {
-                audio: fs.readFileSync(filePath),
+                audio: fs.readFileSync(tempPath),
                 mimetype: "audio/mpeg",
                 ptt: false,
-                fileName: fileName
+                fileName: `${data.title}.mp3`
             }, { quoted: mek });
 
-            // DELETE TEMP FILE
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
+            // යැව්වට පස්සේ Temp file එක මකනවා
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
 
         } catch (downloadErr) {
-            console.error("Audio Download/Send Error:", downloadErr);
+            console.error("Download Stream Error:", downloadErr.message);
+            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
             
-            // Local download ෆේල් වුණොත්, කෙලින්ම URL එකෙන් WhatsApp එකට යවන්න ට්‍රයි කරනවා (Fallback)
+            // 🟢 FALLBACK 🟢
             try {
                 await conn.sendMessage(from, {
-                    audio: { url: audioUrl },
+                    audio: { url: downloadUrl },
                     mimetype: "audio/mpeg",
                     ptt: false,
-                    fileName: fileName
+                    fileName: `${data.title}.mp3`
                 }, { quoted: mek });
             } catch (fallbackErr) {
-                console.error("Fallback Send Error:", fallbackErr);
-                reply("❌ *සින්දුව යැවීමට නොහැකි විය. Server එක කාර්යබහුලයි.*");
-            }
-
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+                reply("❌ *සින්දුව යැවීමට නොහැකි විය.*");
             }
         }
 
     } catch (e) {
-        console.error("Global Song Error:", e);
+        console.error("Global Song Error:", e.message);
         reply("❌ *දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.*");
     }
 });
