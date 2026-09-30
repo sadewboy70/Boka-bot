@@ -30,6 +30,7 @@ async (conn, mek, m, {
         }
         const data = search.videos[0];
 
+        // Thumbnail එක යැවීම
         await conn.sendMessage(from, {
             image: { url: data.thumbnail },
             caption:
@@ -47,58 +48,25 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 2. PROXY STREAM APIs (Bypasses GitHub/Google 403 Blocks) 🟢
-        // මේ APIs වලින් එන්නේ googlevideo.com නෙමෙයි, කෙලින්ම එයාලගේ සර්වර් එකෙන් Stream කරන MP3 එකක්.
-        
-        let downloadUrl = '';
+        // 🟢 2. WHITESHADOW API REQUEST 🟢
+        // ඔයා දුන්න සුපිරි API එක සහ Token එක
+        const apiUrl = `https://whiteshadow-x-api.onrender.com/api/download/ytmp3?url=${encodeURIComponent(data.url)}&quality=320&apitoken=4ehG6P`;
 
-        try {
-            // Proxy API 1: Dreaded API (Direct Audio Buffer Stream)
-            // මේකෙදි URL එකම Stream එකක් විදිහට වැඩ කරනවා
-            const apiUrl1 = `https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(data.url)}`;
-            const testRes = await axios.head(apiUrl1, { timeout: 15000 }); 
-            if(testRes.status === 200) {
-                downloadUrl = apiUrl1;
-                console.log("✅ Using Proxy API 1 (Dreaded Stream)");
-            }
-        } catch (e) {
-            console.log("⚠️ Proxy API 1 Failed");
+        const response = await axios.get(apiUrl, { timeout: 30000 });
+        const res = response.data;
+
+        // 🟢 3. VALIDATE API RESPONSE 🟢
+        if (!res || !res.success || !res.result || !res.result.download_url) {
+            console.log("Invalid API Response:", res);
+            return reply("❌ *API සේවාදායකයේ දෝෂයක්. කරුණාකර පසුව උත්සාහ කරන්න.*");
         }
 
-        if (!downloadUrl) {
-            try {
-                // Proxy API 2: Vreden API (Savetube CDN link එක දෙනවා)
-                const apiUrl2 = `https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(data.url)}`;
-                const res2 = await axios.get(apiUrl2, { timeout: 15000 });
-                if (res2.data?.result?.download?.url) {
-                    downloadUrl = res2.data.result.download.url;
-                    console.log("✅ Using Proxy API 2 (Vreden CDN)");
-                }
-            } catch (e) {
-                console.log("⚠️ Proxy API 2 Failed");
-            }
-        }
+        // savetube.vip CDN Link එක
+        const downloadUrl = res.result.download_url;
+        console.log("✅ Using WhiteShadow CDN Link:", downloadUrl);
 
-        if (!downloadUrl) {
-            try {
-                // Proxy API 3: Dark Yasiya (SL API)
-                const apiUrl3 = `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`;
-                const res3 = await axios.get(apiUrl3, { timeout: 15000 });
-                if (res3.data?.result?.dl_link) {
-                    downloadUrl = res3.data.result.dl_link;
-                    console.log("✅ Using Proxy API 3 (Dark Yasiya)");
-                }
-            } catch (e) {
-                console.log("⚠️ Proxy API 3 Failed");
-            }
-        }
-
-        if (!downloadUrl) {
-            return reply("❌ *Server කාර්යබහුලයි. කරුණාකර පසුව උත්සාහ කරන්න.*");
-        }
-
-        // 🟢 3. SEND AUDIO TO WHATSAPP 🟢
-        // දැන් මේක Direct Proxy URL එකක් නිසා 0 seconds එන්නේ නෑ!
+        // 🟢 4. SEND AUDIO TO WHATSAPP 🟢
+        // මේක CDN Link එකක් නිසා 0 seconds එන්නෙත් නෑ, IP Block වෙන්නෙත් නෑ!
         await conn.sendMessage(from, {
             audio: { url: downloadUrl },
             mimetype: "audio/mpeg",
