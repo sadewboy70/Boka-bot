@@ -3,9 +3,8 @@ module.exports = {
     AUTO_READ_STATUS: true,
     AUTO_REACT: false,
 
-    // Default bot name eka - settings walin wenas karanna puluwan, ehema
-    // wenas nokaruwoth me default eka thamai hama command ekakama pennanne.
-    BOT_NAME: "DCT-MD-MINI-V6",
+    
+    BOT_NAME: "SADEW -MD-MINI-V6",
 
     // Bot owner ge personal WhatsApp number eka (country code samaga, + / spaces nathuwa,
     // uda: "94711234567"). Meka danna owner commands walata full access denna, saha
