@@ -1,118 +1,62 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-
-const API_KEY = "vajira-VajiraOfficial2003";
+const config = require('../config');
 
 cmd({
-    pattern: "ttsearch",
-    alias: ["tiktoksearch", "tts"],
-    react: "🎵",
-    desc: "Search TikTok videos",
+    pattern: "tiktoksearch",
+    alias: ["tks", "tsearch"],
+    desc: "Search TikTok Videos",
     category: "search",
+    react: "🔍",
     filename: __filename
 },
-async(conn, mek, m, {
-    from,
-    q,
-    reply
-}) => {
-
+async (conn, mek, m, { from, q, reply }) => {
     try {
+        if (!q) return reply("🔎 *කරුණාකර සෙවුම් පදයක් (Search Query) ලබා දෙන්න.*\n💡 _උදා: .tks trending dance_");
 
-        if (!q) {
-            return reply("🔎 Give me a search text.");
+        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+
+        const botName = config.BOT_NAME || "SADEW-MINI";
+        
+        // 🟢 නිවැරදි කළ API URL එක (/api/search/tiktok) 🟢
+        const apiUrl = `https://kavindu-download-web.vercel.app/api/search/tiktok?q=${encodeURIComponent(q)}`;
+        
+        const response = await axios.get(apiUrl, { timeout: 15000 });
+        const res = response.data;
+
+        if (!res || (!res.result && !res.data)) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply("❌ *ප්‍රතිඵල කිසිවක් හමු නොවීය.*");
         }
 
-        await reply("⏳ Searching TikTok videos...");
+        const searchResults = res.result || res.data; 
 
-        // API
-        const api =
-`https://vajira-official-apis.vercel.app/api/ttsearch?apikey=${API_KEY}&q=${encodeURIComponent(q)}`;
-
-        const res = await axios.get(api);
-
-        const data = res.data;
-
-        console.log("TTSEARCH RESPONSE =>", JSON.stringify(data, null, 2));
-
-        // RESULTS AUTO DETECT
-        let results =
-            data.result ||
-            data.results ||
-            data.data ||
-            [];
-
-        if (!Array.isArray(results)) {
-            results = [results];
+        if (!Array.isArray(searchResults) || searchResults.length === 0) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply("❌ *ප්‍රතිඵල කිසිවක් හමු නොවීය.*");
         }
 
-        if (!results.length) {
-            return reply("❌ No results found.");
+        let msgText = `╭━━〔 *🎵 𝗧𝗜𝗞𝗧𝗢𝗞 𝗦𝗘𝗔𝗥𝗖𝗛 🎵* 〕━━⬣\n┃\n┃ • *🔍 Query:* ${q}\n┃\n`;
+
+        let limit = Math.min(searchResults.length, 5);
+        for (let i = 0; i < limit; i++) {
+            const video = searchResults[i];
+            
+            const title = video.title || video.desc || video.description || "No Title";
+            const author = video.author || video.author_name || video.creator || "Unknown";
+            const url = video.url || video.video_url || video.link || "Link not available";
+            
+            msgText += `*${i + 1}.* 👤 *Author:* ${author}\n📝 *Title:* ${title.substring(0, 50)}...\n🔗 *Link:* ${url}\n\n`;
         }
 
-        const first = results[0];
+        msgText += `╰━━━━━━━━━━━━━━━━━━⬣\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`;
 
-        let text =
-`╭━━〔 *🎵 TIKTOK SEARCH* 〕━━⬣
-┃
-┃ 🔎 Query : ${q}
-┃ 📦 Results : ${results.length}
-┃
-╰━━━━━━━━━━━━━━━━⬣
-
-`;
-
-        results.slice(0, 10).forEach((v, i) => {
-
-            const title =
-                v.title ||
-                v.desc ||
-                v.name ||
-                "No Title";
-
-            const author =
-                v.author ||
-                v.username ||
-                v.owner ||
-                "Unknown";
-
-            const url =
-                v.url ||
-                v.link ||
-                v.video ||
-                "No Link";
-
-            text +=
-`*${i + 1}. ${title}*
-
-👤 User : ${author}
-🔗 Link : ${url}
-
-`;
-        });
-
-        // THUMBNAIL
-        const thumb =
-            first.thumbnail ||
-            first.thumb ||
-            first.cover ||
-            first.image ||
-            "https://i.ibb.co/2kRz9qM/video.jpg";
-
-        // SEND
-        await conn.sendMessage(from, {
-            image: { url: thumb },
-            caption: text
-        }, { quoted: mek });
+        await conn.sendMessage(from, { text: msgText }, { quoted: mek });
+        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
 
     } catch (e) {
-
-        console.log("TTSEARCH ERROR =>", e);
-
-        reply(
-`❌ Search failed.
-
-${e.message}`
-        );
+        console.error("TikTok Search Error:", e.message);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+        reply(`❌ *දෝෂයක් ඇතිවිය:* ${e.message}`);
     }
 });
