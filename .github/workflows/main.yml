@@ -55,7 +55,7 @@ jobs:
             --names "app,tunnel" \
             --prefix-colors "blue,green" \
             "npm start" \
-            "ngrok http --url=confound-unbraided-endowment.ngrok-free.dev 8000"
+            "ngrok http --url=confound-unbraided-endowment.ngrok-free.dev 3000"
 
       - name: Schedule next cycle
         if: always()
