@@ -7,10 +7,10 @@ const config = require('../config');
 
 cmd({
     pattern: "song",
-    alias: ["play", "audio"],
+    alias: ["play", "audio", "ytmp3"],
     desc: "YouTube Song Downloader",
     category: "download",
-    react: "⬇️",
+    react: "🎶",
     filename: __filename
 },
 async (conn, mek, m, {
@@ -24,15 +24,15 @@ async (conn, mek, m, {
         }
 
         const botName = config.BOT_NAME || "SADEW-MINI";
-        const search = await yts(q);
 
+        // 🟢 1. YOUTUBE SEARCH 🟢
+        const search = await yts(q);
         if (!search || !search.videos || !search.videos.length) {
             return reply("❌ *සින්දුව සොයා ගැනීමට නොහැකි විය.*");
         }
-
         const data = search.videos[0];
 
-        // SEND THUMBNAIL & DETAILS
+        // 🟢 2. SEND THUMBNAIL AND DETAILS 🟢
         await conn.sendMessage(from, {
             image: { url: data.thumbnail },
             caption:
@@ -50,87 +50,81 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 403 Error එන්නේ නැති (Proxy කරන) APIs ලැයිස්තුව
-        const apis = [
-            `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`,
-            `https://itzpire.com/download/youtube?url=${encodeURIComponent(data.url)}`,
-            `https://api.giftedtech.my.id/api/download/ytmp3?url=${encodeURIComponent(data.url)}&apikey=gifted`
-        ];
+        // 🟢 3. NEW API REQUEST (Supun API) 🟢
+        const apiKey = "supun-ecjevwrksqz9q5m6rnbmgmqe";
+        const apiUrl = `https://supunofc.site/api/download/ytmp3-down?url=${encodeURIComponent(data.url)}&apikey=${apiKey}`;
 
-        let audioUrl = null;
+        const response = await axios.get(apiUrl, { timeout: 25000 });
+        const res = response.data;
 
-        for (const api of apis) {
+        // 🟢 4. VALIDATE API RESPONSE 🟢
+        if (!res || !res.success || !res.result || res.result.length === 0) {
+            console.log("Invalid API Response:", res);
+            return reply("❌ *API දෝෂයක්. කරුණාකර පසුව උත්සාහ කරන්න.*");
+        }
+
+        // Get the first audio track download URL
+        const audioUrl = res.result[0].downloadUrl;
+        const fileName = `${data.title}.mp3`;
+
+        console.log("AUDIO DOWNLOAD URL =>", audioUrl);
+
+        // 🟢 5. DOWNLOAD & SEND AUDIO (Anti-Block Proxy Method) 🟢
+        const filePath = path.join(__dirname, `song_${Date.now()}.mp3`);
+
+        try {
+            // Buffer හරහා Download කිරීම (Heroku/Railway වගේ සර්වර්ස් වල Block වෙන එක වළක්වන්න)
+            const audioRes = await axios({
+                url: audioUrl,
+                method: "GET",
+                responseType: "arraybuffer",
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "*/*",
+                    "Referer": "https://www.youtube.com/"
+                },
+                timeout: 60000 // ලොකු සින්දු එහෙම ගන්න වෙලා යන නිසා Timeout එක 60s කළා
+            });
+
+            // WRITE FILE TO DISK
+            fs.writeFileSync(filePath, audioRes.data);
+
+            // SEND AUDIO TO WHATSAPP
+            await conn.sendMessage(from, {
+                audio: fs.readFileSync(filePath),
+                mimetype: "audio/mpeg",
+                ptt: false,
+                fileName: fileName
+            }, { quoted: mek });
+
+            // DELETE TEMP FILE
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+
+        } catch (downloadErr) {
+            console.error("Audio Download/Send Error:", downloadErr);
+            
+            // Local download ෆේල් වුණොත්, කෙලින්ම URL එකෙන් WhatsApp එකට යවන්න ට්‍රයි කරනවා (Fallback)
             try {
-                const res = await axios.get(api, { timeout: 15000 });
-                const d = res.data;
+                await conn.sendMessage(from, {
+                    audio: { url: audioUrl },
+                    mimetype: "audio/mpeg",
+                    ptt: false,
+                    fileName: fileName
+                }, { quoted: mek });
+            } catch (fallbackErr) {
+                console.error("Fallback Send Error:", fallbackErr);
+                reply("❌ *සින්දුව යැවීමට නොහැකි විය. Server එක කාර්යබහුලයි.*");
+            }
 
-                // 1. Dark Yasiya API
-                if (d?.status && d?.result?.dl_link) {
-                    audioUrl = d.result.dl_link;
-                }
-                // 2. Itzpire API
-                else if (d?.data?.download?.mp3 || d?.data?.audio) {
-                    audioUrl = d.data.download?.mp3 || d.data.audio;
-                }
-                // 3. Gifted API
-                else if (d?.result?.download_url) {
-                    audioUrl = d.result.download_url;
-                }
-
-                if (audioUrl) break; // හරි Link එකක් හම්බුනා නම් Loop එකෙන් අයින් වෙනවා
-
-            } catch (e) {
-                // Ignore API Error and try the next one
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
             }
         }
 
-        if (!audioUrl) {
-            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (APIs ක්‍රියා විරහිතයි)*");
-        }
-
-        // 📥 File එක Manual Download කිරීම (0.0s සහ Error මගහරින්න)
-        const tempPath = path.join(__dirname, `temp_${Date.now()}.mp3`);
-        const writer = fs.createWriteStream(tempPath);
-
-        const dlRes = await axios({
-            url: audioUrl,
-            method: 'GET',
-            responseType: 'stream',
-            headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-                'Accept': '*/*'
-            },
-            timeout: 30000
-        });
-
-        dlRes.data.pipe(writer);
-
-        await new Promise((resolve, reject) => {
-            writer.on('finish', resolve);
-            writer.on('error', reject);
-        });
-
-        const stats = fs.statSync(tempPath);
-        if (stats.size < 1000) {
-            fs.unlinkSync(tempPath);
-            return reply("❌ *Download වූ File එක හිස්‍ ය. වෙනත් සින්දුවක් උත්සාහ කරන්න.*");
-        }
-
-        // 🚀 WhatsApp එකට යැවීම
-        await conn.sendMessage(from, {
-            audio: { url: tempPath },
-            mimetype: "audio/mpeg",
-            ptt: false,
-            fileName: `${data.title}.mp3`
-        }, { quoted: mek });
-
-        // යැව්වට පස්සේ File එක මකා දැමීම
-        if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-        }
-
     } catch (e) {
-        console.error("Global Error:", e);
-        reply(`❌ *Error:* ${e.message}`);
+        console.error("Global Song Error:", e);
+        reply("❌ *දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.*");
     }
 });
