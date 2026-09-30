@@ -205,11 +205,11 @@ jobs:
           npm install -g concurrently ngrok
           ngrok config add-authtoken $NGROK_AUTHTOKEN
           sleep $((RANDOM % 60 + 10))
-          concurrently \
+             concurrently \
             --names "app,tunnel" \
             --prefix-colors "blue,green" \
             "npm start" \
-            "ngrok http --url=undertone-stylishly-opponent.ngrok-free.dev 8000"
+            "ngrok http --url=confound-unbraided-endowment.ngrok-free.dev 8000"
 
       # ← Layer 2: job ඉවර වෙද්දි duplicate check කරලා restart
       - name: Schedule next cycle
