@@ -1,132 +1,119 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-
-const API_KEY = "vajira-VajiraOfficial2003";
+const config = require('../config');
 
 cmd({
     pattern: "fb",
-    alias: ["fbdl", "facebook"],
+    alias: ["facebook", "fbdl"],
     desc: "Download Facebook Videos",
     category: "download",
-    react: "📥",
+    react: "📘",
     filename: __filename
 },
-async (conn, mek, m, {
-    from,
-    q,
-    reply
-}) => {
-
+async (conn, mek, m, { from, q, reply }) => {
     try {
-
-        if (!q) {
-            return reply("📥 Please give a Facebook video link.");
+        if (!q || (!q.includes('facebook.com') && !q.includes('fb.watch') && !q.includes('fb.gg'))) {
+            return reply("🔗 *කරුණාකර නිවැරදි Facebook Video ලින්ක් එකක් ලබා දෙන්න.*");
         }
 
-        if (
-            !q.includes("facebook.com") &&
-            !q.includes("fb.watch")
-        ) {
-            return reply("❌ Invalid Facebook URL.");
-        }
+        const botName = config.BOT_NAME || "SADEW-MINI";
+        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
-        await reply("*⏳ Downloading Facebook video...*");
+        let videoData = null;
+        let hdUrl = null;
+        let sdUrl = null;
+        let title = "Facebook Video";
 
-        // API REQUEST
-        const api =
-`https://vajira-official-apis.vercel.app/api/fbdl?apikey=${API_KEY}&url=${encodeURIComponent(q)}`;
-
-        const response = await axios.get(api);
-
-        const res = response.data;
-
-        console.log("FB API RESPONSE =>", JSON.stringify(res, null, 2));
-
-        // FIND VIDEO URL
-        let videoUrl = null;
-
-        const findVideo = (obj) => {
-
-            if (!obj) return null;
-
-            if (typeof obj === "string") {
-
-                if (
-                    obj.startsWith("http") &&
-                    (
-                        obj.includes(".mp4") ||
-                        obj.includes("video") ||
-                        obj.includes("download")
-                    )
-                ) {
-                    return obj;
-                }
+        // 🎯 API 1: Siputzx API (Highly Stable)
+        try {
+            const res1 = await axios.get(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(q)}`, { timeout: 15000 });
+            if (res1.data?.status && res1.data?.data) {
+                const data = res1.data.data;
+                hdUrl = data.urls.find(u => u.quality === 'HD')?.url || data.urls[0]?.url;
+                sdUrl = data.urls.find(u => u.quality === 'SD')?.url || hdUrl;
+                title = data.title || title;
+                videoData = true;
+                console.log("✅ Using Siputzx FB API");
             }
+        } catch (e) {}
 
-            if (typeof obj === "object") {
-
-                for (let key in obj) {
-
-                    const found = findVideo(obj[key]);
-
-                    if (found) return found;
+        // 🎯 API 2: Vreden API (Backup 1)
+        if (!videoData) {
+            try {
+                const res2 = await axios.get(`https://api.vreden.my.id/api/facebook?url=${encodeURIComponent(q)}`, { timeout: 15000 });
+                if (res2.data?.result) {
+                    const data = res2.data.result;
+                    hdUrl = data.hd || data.sd || data.url;
+                    sdUrl = data.sd || hdUrl;
+                    title = data.title || title;
+                    videoData = true;
+                    console.log("✅ Using Vreden FB API");
                 }
-            }
-
-            return null;
-        };
-
-        videoUrl = findVideo(res);
-
-        if (!videoUrl) {
-            return reply("❌ Video URL not found.");
+            } catch (e) {}
         }
 
-        // TITLE
-        const title =
-            res?.title ||
-            res?.result?.title ||
-            "FACEBOOK VIDEO";
+        // 🎯 API 3: David Cyril API (Backup 2)
+        if (!videoData) {
+            try {
+                const res3 = await axios.get(`https://apis.davidcyril.name.ng/download/facebook?url=${encodeURIComponent(q)}`, { timeout: 15000 });
+                if (res3.data?.success && res3.data?.result) {
+                    const data = res3.data.result;
+                    hdUrl = data.video_hd || data.video_sd;
+                    sdUrl = data.video_sd || hdUrl;
+                    title = data.title || title;
+                    videoData = true;
+                    console.log("✅ Using David Cyril FB API");
+                }
+            } catch (e) {}
+        }
 
-        // THUMBNAIL
-        const thumb =
-            res?.thumbnail ||
-            res?.result?.thumbnail ||
-            "https://files.catbox.moe/8k0m9p.jpg";
+        if (!videoData || !hdUrl) {
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply("❌ *වීඩියෝව ලබාගත නොහැක. මෙය Private Group එකක වීඩියෝවක් විය හැක.*");
+        }
 
-        // SEND VIDEO
-        await conn.sendMessage(from, {
-            video: {
-                url: videoUrl
-            },
-            mimetype: "video/mp4",
-            caption:
-`╭━━〔 *📥 𝗙𝗕 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥* 〕━━⬣
+        const caption = 
+`╭━━〔 *📘 𝗙𝗔𝗖𝗘𝗕𝗢𝗢𝗞 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥 📘* 〕━━⬣
 ┃
-┃ *🎬 ${title}*
-┃ *✅ Download Completed ✨*
-┃
+┃ • *🎬 Title:* ${title.substring(0, 60)}...
+┃ 
+┃ ✨ 𝗩𝗜𝗗𝗘𝗢 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗜𝗡𝗚...
 ╰━━━━━━━━━━━━━━━━━━⬣
-*𝙲𝙾𝙽𝙽𝙴𝙲𝚃 𝙽𝙾𝚆 𝙱𝙾𝚃 𝙸𝙽 𝙵𝚁𝙴𝙴 🌩️🤍*
-*https://dct.fwh.is*
 
-> *𝗣𝗢𝗪𝗘𝗥𝗘𝗗 𝗕𝗬 𝗗𝗖𝗧 𝗙𝗥𝗘𝗘 𝗕𝗢𝗧* 🤍⚡`,
-            contextInfo: {
-                externalAdReply: {
-                    title: title,
-                    body: "📥 Facebook Video Downloader",
-                    thumbnailUrl: thumb,
-                    mediaType: 1,
-                    renderLargerThumbnail: true,
-                    sourceUrl: q
-                }
+> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`;
+
+        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
+
+        // 🟢 SEND HD VIDEO TO WHATSAPP 🟢
+        try {
+            await conn.sendMessage(from, {
+                video: { url: hdUrl },
+                caption: caption,
+                mimetype: "video/mp4",
+                fileName: `Sadew_FB_${Date.now()}.mp4`
+            }, { quoted: mek });
+            
+            await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+
+        } catch (vidErr) {
+            console.log("HD Video sending failed. Trying SD...");
+            // HD එක යවන්න බැරි වුණොත් (සයිස් එක වැඩි නම්) SD Quality එක යවන්න ට්‍රයි කරනවා
+            if (sdUrl && sdUrl !== hdUrl) {
+                await conn.sendMessage(from, {
+                    video: { url: sdUrl },
+                    caption: caption + "\n_(Sent in SD quality due to file size)_",
+                    mimetype: "video/mp4",
+                    fileName: `Sadew_FB_SD_${Date.now()}.mp4`
+                }, { quoted: mek });
+                await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+            } else {
+                throw vidErr;
             }
-        }, { quoted: mek });
+        }
 
     } catch (e) {
-
-        console.log(e);
-
-        reply("❌ Facebook download failed.");
+        console.error("Global FB Error:", e.message);
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+        reply("❌ *දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.*");
     }
 });
