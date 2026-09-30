@@ -8,7 +8,7 @@
     "dev": "nodemon pair.js"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "git+https://github.com/WhiskeySockets/Baileys.git",
+   "@whiskeysockets/baileys": "npm:@dnuzi/baileys@latest",
     "@bochilteam/scraper": "^4.2.4",
     "api-dylux": "^1.8.5",
     "axios": "^1.7.9",
