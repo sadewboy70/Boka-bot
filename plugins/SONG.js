@@ -1,9 +1,6 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 const yts = require('yt-search');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 const config = require('../config');
 
 cmd({
@@ -50,32 +47,49 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 2. PROXIED API REQUESTS (To bypass GitHub IP Block) 🟢
+        // 🟢 2. PROXY STREAM APIs (Bypasses GitHub/Google 403 Blocks) 🟢
+        // මේ APIs වලින් එන්නේ googlevideo.com නෙමෙයි, කෙලින්ම එයාලගේ සර්වර් එකෙන් Stream කරන MP3 එකක්.
+        
         let downloadUrl = '';
 
-        // 🎯 API 1: Cloudflare Worker API (googlevideo ලින්ක් එක Cloudflare හරහා හංගලා දෙයි)
         try {
-            const workerApi = `https://ytdl.udmodzz.workers.dev/?url=${encodeURIComponent(data.url)}&type=aud`;
-            const res1 = await axios.get(workerApi, { timeout: 20000 });
-            if (res1.data && res1.data.links && res1.data.links["128kbps"]) {
-                downloadUrl = res1.data.links["128kbps"]; 
-                console.log("✅ Using Cloudflare Worker Proxy Link");
+            // Proxy API 1: Dreaded API (Direct Audio Buffer Stream)
+            // මේකෙදි URL එකම Stream එකක් විදිහට වැඩ කරනවා
+            const apiUrl1 = `https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(data.url)}`;
+            const testRes = await axios.head(apiUrl1, { timeout: 15000 }); 
+            if(testRes.status === 200) {
+                downloadUrl = apiUrl1;
+                console.log("✅ Using Proxy API 1 (Dreaded Stream)");
             }
-        } catch (e1) {
-            console.log("⚠️ Worker API Failed. Switching to Backup...");
+        } catch (e) {
+            console.log("⚠️ Proxy API 1 Failed");
         }
 
-        // 🎯 API 2: David Cyril Proxy API (ඔවුන්ගේ සර්වර් එක හරහා ඩවුන්ලෝඩ් කරලා දෙන එකක්)
         if (!downloadUrl) {
             try {
-                const proxyApi = `https://apis.davidcyril.name.ng/download/ytmp33?url=${encodeURIComponent(data.url)}`;
-                const res2 = await axios.get(proxyApi, { timeout: 20000 });
-                if (res2.data?.success && res2.data?.result?.download_url) {
-                    downloadUrl = res2.data.result.download_url;
-                    console.log("✅ Using Server Proxy Link");
+                // Proxy API 2: Vreden API (Savetube CDN link එක දෙනවා)
+                const apiUrl2 = `https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(data.url)}`;
+                const res2 = await axios.get(apiUrl2, { timeout: 15000 });
+                if (res2.data?.result?.download?.url) {
+                    downloadUrl = res2.data.result.download.url;
+                    console.log("✅ Using Proxy API 2 (Vreden CDN)");
                 }
-            } catch (e2) {
-                console.log("⚠️ Backup Proxy API Failed.");
+            } catch (e) {
+                console.log("⚠️ Proxy API 2 Failed");
+            }
+        }
+
+        if (!downloadUrl) {
+            try {
+                // Proxy API 3: Dark Yasiya (SL API)
+                const apiUrl3 = `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`;
+                const res3 = await axios.get(apiUrl3, { timeout: 15000 });
+                if (res3.data?.result?.dl_link) {
+                    downloadUrl = res3.data.result.dl_link;
+                    console.log("✅ Using Proxy API 3 (Dark Yasiya)");
+                }
+            } catch (e) {
+                console.log("⚠️ Proxy API 3 Failed");
             }
         }
 
@@ -83,54 +97,14 @@ async (conn, mek, m, {
             return reply("❌ *Server කාර්යබහුලයි. කරුණාකර පසුව උත්සාහ කරන්න.*");
         }
 
-        // 🟢 3. DOWNLOAD & SEND AUDIO 🟢
-        const tempPath = path.join(os.tmpdir(), `song_${Date.now()}.mp3`);
-
-        try {
-            // දැන් මේ ලින්ක් එක Proxied එකක් නිසා GitHub IP එකෙන් Block වෙන්නේ නෑ!
-            const audioStream = await axios({
-                method: 'GET',
-                url: downloadUrl,
-                responseType: 'stream',
-                headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-                timeout: 60000
-            });
-
-            const writer = fs.createWriteStream(tempPath);
-            audioStream.data.pipe(writer);
-
-            await new Promise((resolve, reject) => {
-                writer.on('finish', resolve);
-                writer.on('error', reject);
-            });
-
-            // WhatsApp එකට යැවීම
-            await conn.sendMessage(from, {
-                audio: fs.readFileSync(tempPath),
-                mimetype: "audio/mpeg",
-                ptt: false,
-                fileName: `${data.title}.mp3`
-            }, { quoted: mek });
-
-            // යැව්වට පස්සේ Temp file එක මකනවා
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-
-        } catch (downloadErr) {
-            console.error("Download Stream Error:", downloadErr.message);
-            if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
-            
-            // 🟢 FALLBACK 🟢
-            try {
-                await conn.sendMessage(from, {
-                    audio: { url: downloadUrl },
-                    mimetype: "audio/mpeg",
-                    ptt: false,
-                    fileName: `${data.title}.mp3`
-                }, { quoted: mek });
-            } catch (fallbackErr) {
-                reply("❌ *සින්දුව යැවීමට නොහැකි විය.*");
-            }
-        }
+        // 🟢 3. SEND AUDIO TO WHATSAPP 🟢
+        // දැන් මේක Direct Proxy URL එකක් නිසා 0 seconds එන්නේ නෑ!
+        await conn.sendMessage(from, {
+            audio: { url: downloadUrl },
+            mimetype: "audio/mpeg",
+            ptt: false,
+            fileName: `${data.title}.mp3`
+        }, { quoted: mek });
 
     } catch (e) {
         console.error("Global Song Error:", e.message);
