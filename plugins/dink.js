@@ -9,7 +9,6 @@ const MAX_MB = Number(config.MAX_MOVIE_MB || 2000);
 const TMP_DIR = path.join(__dirname, '../tmp');
 const activeDownloads = new Set();
 
-// ── tmp folder එක හදාගන්නවා ──
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
 const decode = (s = "") => s
@@ -39,6 +38,75 @@ const fileNameFromHeader = (cd = "") => {
 const safeName = (s) => String(s || "movie").replace(/[\\/:*?"<>|]/g, "").trim().slice(0, 120);
 const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1);
 
+// ── Google Drive File ID එක extract කරනවා ──
+function getFileId(url) {
+    if (!url || !url.includes('drive.google.com')) return null;
+    let m = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    m = url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    m = url.match(/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return m[1];
+    return null;
+}
+
+// ── HTML එකෙන් confirm token එක extract කරනවා ──
+function extractConfirmToken(html) {
+    if (!html) return null;
+    // form action එකේ හෝ link එකේ confirm token එක හොයනවා
+    let m = html.match(/confirm=([0-9A-Za-z_-]+)/);
+    if (m) return m[1];
+    // hidden input field එකෙන්
+    m = html.match(/name="confirm"\s+value="([^"]+)"/);
+    if (m) return m[1];
+    m = html.match(/value="([^"]+)"\s+name="confirm"/);
+    if (m) return m[1];
+    return null;
+}
+
+// ── Google Drive warning page එක handle කරන function එක ──
+async function handleGDriveResponse(res, fileId, fileUrl) {
+    const contentType = res.headers['content-type'] || '';
+    
+    // HTML page එකක් ආවොත් (warning page)
+    if (contentType.includes('text/html')) {
+        const html = await new Promise((resolve) => {
+            let data = '';
+            res.data.on('data', chunk => data += chunk);
+            res.data.on('end', () => resolve(data));
+            res.data.on('error', () => resolve(''));
+        });
+
+        // confirm token එක extract කරනවා
+        let token = extractConfirmToken(html);
+        
+        // token එක නැත්නම් 't' try කරනවා (files > 100MB සඳහා)
+        if (!token) token = 't';
+
+        console.log(`[GDrive] Confirmation page detected. Token: ${token}`);
+
+        // cookies save කරගන්නවා
+        const cookies = res.headers['set-cookie'] || [];
+        const cookieStr = cookies.map(c => c.split(';')[0]).join('; ');
+
+        // අලුත් URL එක හදනවා
+        const newUrl = `https://drive.google.com/uc?export=download&confirm=${token}&id=${fileId}`;
+
+        // අලුත් request එක යවනවා (cookies එක්කම)
+        return await axios.get(newUrl, {
+            responseType: 'stream',
+            timeout: 0,
+            maxRedirects: 10,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Cookie': cookieStr
+            }
+        });
+    }
+
+    return res;
+}
+
 async function getDownloads(pageUrl) {
     const { data } = await axios.get(`${API}/dl?url=${encodeURIComponent(pageUrl)}`, { timeout: 25000 });
     if (!data?.status || !Array.isArray(data.downloads) || data.downloads.length === 0) return null;
@@ -48,7 +116,7 @@ async function getDownloads(pageUrl) {
 cmd({
     pattern: "dink",
     alias: ["dinkamovie"],
-    desc: "DinkaMovies search + WhatsApp document downloader (file-based)",
+    desc: "DinkaMovies search + WhatsApp document downloader (GDrive fix)",
     category: "movies",
     react: "🎬",
     filename: __filename
@@ -86,26 +154,35 @@ async (conn, mek, m, { from, q, reply }) => {
                 if (!fileUrl) return reply("❌ *Download link එකක් නැත.*");
 
                 const baseTitle = (dlData.title || "movie").split("|")[0];
+                const fileId = getFileId(fileUrl);
 
                 // ── progress message එක ──
                 let msg = await conn.sendMessage(from, {
-                    text: `⏳ *GDrive/Direct එකෙන් download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n\n> ${botName}`
+                    text: `⏳ *Download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n${fileId ? '📂 *Source:* Google Drive' : ''}\n\n> ${botName}`
                 }, { quoted: mek });
 
-                // ── Stream එක file එකට save කරනවා ──
-                const res = await axios.get(fileUrl, {
+                // ── Step 1: Initial request ──
+                let res = await axios.get(fileUrl, {
                     responseType: 'stream',
                     timeout: 0,
                     maxRedirects: 10,
-                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                    headers: { 
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
                 });
+
+                // ── Step 2: GDrive warning page එකක් නම් handle කරනවා ──
+                if (fileId) {
+                    res = await handleGDriveResponse(res, fileId, fileUrl);
+                }
 
                 const type = res.headers['content-type'] || "";
                 const size = Number(res.headers['content-length'] || 0);
 
+                // HTML තවමත් තියෙනවා නම් error
                 if (type.includes('text/html')) {
                     res.data.destroy();
-                    return reply(`❌ *File එක කෙලින්ම download කරන්න බෑ (Drive limit / warning page).*\n🔗 ${fileUrl}`);
+                    return reply(`❌ *File එක download කරන්න බෑ (private / limit exceeded).*\n🔗 ${fileUrl}`);
                 }
 
                 if (size && size / 1024 / 1024 > MAX_MB) {
@@ -142,7 +219,7 @@ async (conn, mek, m, { from, q, reply }) => {
                     });
                 }
 
-                // ── progress එක update කරනවා ──
+                // ── progress update ──
                 await conn.sendMessage(from, {
                     text: `📤 *Upload වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n📦 *Size:* ${sizeMB.toFixed(2)} MB\n\n> ${botName}`,
                     edit: msg.key
@@ -163,9 +240,8 @@ async (conn, mek, m, { from, q, reply }) => {
             } catch (innerErr) {
                 console.error("Dink DL Error:", innerErr.message);
                 await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-                reply(`❌ *Download Failed*\n\nError: ${innerErr.message}\n\nහේතු: Link private ද, limit exceed ද බලන්න.`);
+                reply(`❌ *Download Failed*\n\nError: ${innerErr.message}`);
             } finally {
-                // ── temp file එක මකනවා ──
                 if (tmpPath && fs.existsSync(tmpPath)) {
                     try { fs.unlinkSync(tmpPath); } catch (_) {}
                 }
