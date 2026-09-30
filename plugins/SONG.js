@@ -48,55 +48,29 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 APIs List (වැඩ කරන හොඳම APIs ටික මුලට දාලා තියෙන්නේ)
-        const apis = [
-            `https://api.giftedtech.my.id/api/download/ytmp3?url=${encodeURIComponent(data.url)}&apikey=gifted`,
-            `https://itzpire.com/download/youtube?url=${encodeURIComponent(data.url)}`,
-            `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`,
-            `https://new-api-yt.vercel.app/api/mp3?url=${encodeURIComponent(data.url)}` // ඔයාගේ පරණ API එක අන්තිමටම දැම්මා
-        ];
+        // 🟢 ඔයා දුන්න අලුත් API එක (API Key එකත් එක්ක)
+        const apiUrl = `https://supunofc.site/api/download/ytmp3-down?url=${encodeURIComponent(data.url)}&apikey=supun-ecjevwrksqz9q5m6rnbmgmqe`;
+        
+        const response = await axios.get(apiUrl, { timeout: 15000 });
+        let res = response.data;
+
+        if (typeof res === "string") {
+            res = JSON.parse(res);
+        }
 
         let audioUrl = null;
 
-        for (const api of apis) {
-            try {
-                const res = await axios.get(api, { timeout: 10000 });
-                const d = res.data;
-                let tempUrl = null;
-
-                if (d?.result?.download_url) tempUrl = d.result.download_url; // giftedtech / dark-yasiya
-                else if (d?.data?.download?.mp3) tempUrl = d.data.download.mp3; // itzpire
-                else if (d?.data?.audio) tempUrl = d.data.audio; // itzpire fallback
-                else if (d?.download) tempUrl = d.download; // new-api-yt
-
-                if (tempUrl) {
-                    // 🛑 ERROR CHECK: WhatsApp එකට යවන්න කලින් File එක හිස්ද (0.0s ද) කියලා බලනවා!
-                    try {
-                        const check = await axios.head(tempUrl, { timeout: 5000 });
-                        const contentLength = check.headers['content-length'];
-                        
-                        // File එක 1000 Bytes (1KB) වලට වඩා අඩු නම් ඒක 0.0s (හිස්) සින්දුවක්.
-                        if (contentLength && parseInt(contentLength) < 1000) {
-                            console.log(`[Warning] API gave an empty file (${contentLength} bytes). Skipping...`);
-                            continue; // මේ ලින්ක් එක බොරු එකක්. ඊලඟ API එකට යනවා!
-                        }
-                    } catch (headErr) {
-                        // 404 Not Found ආවොත් හරි, Block කරලා නම් හරි මේ API එක skip කරනවා
-                        console.log(`[Warning] API URL is broken or blocked. Skipping...`);
-                        continue; 
-                    }
-
-                    // මේ හරියට ආවා කියන්නේ File එක 100% වැඩ. ඒක අරගන්නවා!
-                    audioUrl = tempUrl;
-                    break; 
-                }
-            } catch (e) {
-                console.log(`[Warning] API is offline, trying next...`);
+        // 🟢 ඔයාගේ JSON Result එකෙන් Audio Track එක හොයාගන්නවා
+        if (res && res.success && res.result && Array.isArray(res.result)) {
+            // "Audio Track" තියෙන පලවෙනි ලින්ක් එක තෝරගන්නවා
+            const track = res.result.find(t => t.type === "Audio Track" && t.downloadUrl) || res.result[0];
+            if (track && track.downloadUrl) {
+                audioUrl = track.downloadUrl;
             }
         }
 
         if (!audioUrl) {
-            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (APIs අවහිර කර ඇත)*");
+            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (API Error)*");
         }
 
         // 📥 0.0s අවුල නැතුව සින්දුව කෙලින්ම යැවීම
