@@ -1,11 +1,16 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const fs = require('fs');
 const path = require('path');
 const config = require('../config');
 
 const API = "https://kavindu-download-web.vercel.app/api/dinkamovies/movie";
 const MAX_MB = Number(config.MAX_MOVIE_MB || 2000);
+const TMP_DIR = path.join(__dirname, '../tmp');
 const activeDownloads = new Set();
+
+// ── tmp folder එක හදාගන්නවා ──
+if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
 const decode = (s = "") => s
     .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
@@ -19,7 +24,9 @@ const mimeOf = (name = "") => ({
     ".avi": "video/x-msvideo",
     ".webm": "video/webm",
     ".zip": "application/zip",
-    ".rar": "application/vnd.rar"
+    ".rar": "application/vnd.rar",
+    ".pdf": "application/pdf",
+    ".apk": "application/vnd.android.package-archive"
 }[path.extname(name).toLowerCase()] || "application/octet-stream");
 
 const fileNameFromHeader = (cd = "") => {
@@ -41,20 +48,20 @@ async function getDownloads(pageUrl) {
 cmd({
     pattern: "dink",
     alias: ["dinkamovie"],
-    desc: "DinkaMovies search + WhatsApp document downloader",
+    desc: "DinkaMovies search + WhatsApp document downloader (file-based)",
     category: "movies",
     react: "🎬",
     filename: __filename
 },
 async (conn, mek, m, { from, q, reply }) => {
-    const botName = config.BOT_NAME || "SADEW-MINI";
+    const botName = config.BOT_NAME || "QUEEN ASALIYA V1";
     const prefix = config.PREFIX || ".";
 
     try {
-        if (!q) return reply(`🔎 *කරුණාකර ඉත්රපටයක නමක් ලබා දෙන්න.*\n💡 _උදා: ${prefix}dink the croods_`);
+        if (!q) return reply(`🔎 *කරුණාකර ඉත්‍රපටයක නමක් ලබා දෙන්න.*\n💡 _උදා: ${prefix}dink the croods_`);
         q = q.trim();
 
-        // ───────────── STEP 3: quality එක download කර WhatsApp එකට යවනවා ─────────────
+        // ───────────── STEP 3: Quality එක download කර WhatsApp එකට යවනවා ─────────────
         if (/^dl\s+/i.test(q)) {
             const [, numStr, pageUrl] = q.split(/\s+/);
             const index = parseInt(numStr, 10) - 1;
@@ -63,10 +70,11 @@ async (conn, mek, m, { from, q, reply }) => {
             }
 
             if (activeDownloads.has(from)) {
-                return reply("⏳ *මෙම chat එකේ දැනටමත් download එකක් සිදුවෙමින් පවති. කරුණාකර රැඳී සිටින්න.*");
+                return reply("⏳ *මෙම chat එකේ දැනටමත් download එකක් සිදුවෙමින් පවති. රැඳී සිටින්න.*");
             }
             activeDownloads.add(from);
 
+            let tmpPath = null;
             try {
                 await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
 
@@ -77,9 +85,17 @@ async (conn, mek, m, { from, q, reply }) => {
                 const fileUrl = pickLink(dl);
                 if (!fileUrl) return reply("❌ *Download link එකක් නැත.*");
 
+                const baseTitle = (dlData.title || "movie").split("|")[0];
+
+                // ── progress message එක ──
+                let msg = await conn.sendMessage(from, {
+                    text: `⏳ *GDrive/Direct එකෙන් download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n\n> ${botName}`
+                }, { quoted: mek });
+
+                // ── Stream එක file එකට save කරනවා ──
                 const res = await axios.get(fileUrl, {
                     responseType: 'stream',
-                    timeout: 0, // disable socket timeout
+                    timeout: 0,
                     maxRedirects: 10,
                     headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
@@ -97,35 +113,62 @@ async (conn, mek, m, { from, q, reply }) => {
                     return reply(`❌ *File එක ලොකු වැඩියි (${mb(size)} MB). උපරිමය ${MAX_MB} MB.*\n🔗 ${fileUrl}`);
                 }
 
-                const baseTitle = (dlData.title || "movie").split("|")[0];
+                // ── file name ──
                 const fileName = safeName(
                     fileNameFromHeader(res.headers['content-disposition']) ||
                     `${baseTitle} ${dl.quality || ""}.mp4`
                 );
 
-                await reply(
-                    `📥 *Download වෙමින් පවතී...*\n\n` +
-                    `🎬 *${dlData.title || baseTitle}*\n` +
-                    `🎞 *Quality:* ${dl.quality || "Unknown"}\n` +
-                    `📦 *Size:* ${size ? mb(size) + " MB" : (dl.size || "Unknown")}\n\n` +
-                    `_ලොකු files වලට විනාඩි කිහිපයක් ය හැක._`
-                );
-                await conn.sendMessage(from, { react: { text: '📤', key: mek.key } });
+                // ── temp file එකට ලියනවා ──
+                tmpPath = path.join(TMP_DIR, `${Date.now()}_${fileName}`);
+                const writer = fs.createWriteStream(tmpPath);
+                res.data.pipe(writer);
 
-                try {
-                    await conn.sendMessage(from, {
-                        document: { stream: res.data },
-                        mimetype: mimeOf(fileName),
-                        fileName,
-                        caption: `🎬 *${dlData.title || baseTitle}*\n🎞 ${dl.quality || ""}\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
-                    }, { quoted: mek });
-                } catch (sendErr) {
-                    try { res.data.destroy(); } catch (_) {}
-                    throw sendErr;
+                await new Promise((resolve, reject) => {
+                    writer.on('finish', resolve);
+                    writer.on('error', reject);
+                    res.data.on('error', reject);
+                });
+
+                const stats = fs.statSync(tmpPath);
+                const sizeMB = stats.size / 1024 / 1024;
+
+                if (sizeMB > MAX_MB) {
+                    fs.unlinkSync(tmpPath);
+                    tmpPath = null;
+                    return conn.sendMessage(from, {
+                        text: `⚠️ *File Too Large* (${sizeMB.toFixed(2)} MB)\n\nඋපරිමය ${MAX_MB} MB.\n\n🔗 Direct link:\n${fileUrl}\n\n> ${botName}`,
+                        edit: msg.key
+                    });
                 }
 
+                // ── progress එක update කරනවා ──
+                await conn.sendMessage(from, {
+                    text: `📤 *Upload වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n📦 *Size:* ${sizeMB.toFixed(2)} MB\n\n> ${botName}`,
+                    edit: msg.key
+                });
+                await conn.sendMessage(from, { react: { text: '📤', key: mek.key } });
+
+                // ── WhatsApp එකට file එක යවනවා ──
+                await conn.sendMessage(from, {
+                    document: fs.readFileSync(tmpPath),
+                    fileName,
+                    mimetype: mimeOf(fileName),
+                    caption: `✅ *DINKAMOVIES DOWNLOAD*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n📦 *Size:* ${sizeMB.toFixed(2)} MB\n\n> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
+                }, { quoted: mek });
+
+                await conn.sendMessage(from, { text: `✅ *Done*`, edit: msg.key });
                 await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+
+            } catch (innerErr) {
+                console.error("Dink DL Error:", innerErr.message);
+                await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+                reply(`❌ *Download Failed*\n\nError: ${innerErr.message}\n\nහේතු: Link private ද, limit exceed ද බලන්න.`);
             } finally {
+                // ── temp file එක මකනවා ──
+                if (tmpPath && fs.existsSync(tmpPath)) {
+                    try { fs.unlinkSync(tmpPath); } catch (_) {}
+                }
                 activeDownloads.delete(from);
             }
             return;
@@ -136,7 +179,7 @@ async (conn, mek, m, { from, q, reply }) => {
             await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
             const dlData = await getDownloads(q);
-            if (!dlData) return reply("❌ *මෙම ඉත්රපටය සඳහා download ලින්ක්ස් හමු නොවීය.*");
+            if (!dlData) return reply("❌ *මෙම ඉත්‍රපටය සඳහා download ලින්ක්ස් හමු නොවීය.*");
 
             let txt = `╭──「 *🎬 ᴅɪɴᴋᴀ ᴍᴏᴠɪᴇꜱ 🎬* 」──╮\n│\n`;
             txt += `│ *🎬 ɴᴀᴍᴇ:* ${dlData.title || "Unknown"}\n│\n`;
@@ -180,7 +223,7 @@ async (conn, mek, m, { from, q, reply }) => {
             txt += `*${i + 1}.* ${mv.title || "Unknown"}\n`;
             txt += `   ⤷ \`${prefix}dink ${mv.link || mv.url}\`\n\n`;
         });
-        txt += `> *පහතින් ඕනෑම ඉත්රපටයක් තෝරන්න:*`;
+        txt += `> *පහතින් ඕනෑම ඉත්‍රපටයක් තෝරන්න:*`;
 
         const buttons = movies.map((mv) => {
             const title = mv.title || "Unknown";
