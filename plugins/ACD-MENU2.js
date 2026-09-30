@@ -3,7 +3,7 @@ const { cmd, commands } = require('../command')
 const os = require('os')
 
 cmd({
-    pattern: "menu3",
+    pattern: "menu3", // අවශ්‍ය නම් "menu3" ලෙසම තබා ගන්න
     alias: ["help2", "list2"],
     desc: "All commands list.",
     category: "main",
@@ -12,8 +12,10 @@ cmd({
 },
 async (conn, mek, m, { from, reply, pushname }) => {
     try {
-        const botName = config.BOT_NAME || "ᴅᴄᴛ-ᴍᴅ-ᴍɪɴɪ";
-        const logo = "https://i.ibb.co/YBtjMpQx/1ed923b3376b.jpg";
+        // config.js හි ඇති නම ගනී, නැත්නම් "SADEW-MD-MINI" ලෙස වැටේ
+        const botName = config.BOT_NAME || "SADEW-MD-MINI";
+        // config.js හි ALIVE_LOGO එක ඇත්නම් එය ගනී
+        const logo = config.ALIVE_LOGO || "https://i.ibb.co/YBtjMpQx/1ed923b3376b.jpg";
 
         // Animation
         const frames = [
@@ -21,7 +23,7 @@ async (conn, mek, m, { from, reply, pushname }) => {
             "✨ ʜᴇʏ " + pushname + " ᴡᴀɪᴛ...",
             "📟 ꜰᴇᴛᴄʜɪɴɢ ᴄᴏᴍᴀɴᴅꜱ...",
             "📊 ᴏᴘᴛɪᴍɪᴢɪɴɢ ᴍᴇɴᴜ...",
-            "📜 *ᴅᴄᴛ-ᴍᴅ-ᴍɪɴɪ ᴍᴇɴᴜ ʟᴏᴀᴅᴇᴅ!*"
+            `📜 *${botName} ᴍᴇɴᴜ ʟᴏᴀᴅᴇᴅ!*`
         ];
 
         let { key } = await conn.sendMessage(from, { text: "⏳" });
@@ -31,7 +33,7 @@ async (conn, mek, m, { from, reply, pushname }) => {
             await conn.sendMessage(from, { text: frame, edit: key });
         }
 
-        // Commands sort karana eka
+        // Commands sort කිරීම
         const categories = {};
         commands.forEach(cmd => {
             if (!cmd.dontAddCommandList && cmd.pattern) {
@@ -45,27 +47,25 @@ async (conn, mek, m, { from, reply, pushname }) => {
         // Premium Menu Text
         let menuText = `
 ╭─════════════════─╮
-│  👨‍💻 *𝐃𝐂𝐓 𝐅𝐑𝐄𝐄 𝐁𝐎𝐓*   
+│  👨‍💻 *${botName}*   
 │  👑 *PREMIUM MENU* 
 ╰─════════════════─╯
 
 ┏━━━━━━━━━━━━━━┓
 ┃  👋 *HELLO*  : ${pushname}
-┃  🤖 *BOT*     : ${botName}
-┃  📟 *RAM*     : ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB
-┃  ⏳ *UPTIME*  : ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
-┃  📊 *CMDS*    : ${commands.length}
-┗━━━━━━━━┛
+┃  🤖 *BOT*    : ${botName}
+┃  📟 *RAM*    : ${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)}MB
+┃  ⏳ *UPTIME* : ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
+┃  📊 *CMDS*   : ${commands.length}
+┗━━━━━━━━━━━━━━┛
 `
 
         for (const category in categories) {
-            menuText += `
-┏━━━〔 🔥 *${category.toUpperCase()}* 〕━━━┓
-`
+            menuText += `\n┏━━━〔 🔥 *${category.toUpperCase()}* 〕━━━┓\n`
             categories[category].forEach(cmdName => {
                 menuText += `┃  🌩️ .${cmdName}\n`
             })
-            menuText += `┗━━━━━━━━━━━┛\n`
+            menuText += `┗━━━━━━━━━━━━━━┛\n`
         }
 
         menuText += `
@@ -73,14 +73,14 @@ async (conn, mek, m, { from, reply, pushname }) => {
 │  💎 *Premium Modules* : Active
 │  🚀 *Response* : Instant
 │  🛡️ *Security* : Max Protection
-│  🔥 *Owner* : Mr Hashuu
+│  🔥 *Owner* : Sadew Rashmika
 ╰─────────────────────────────────╯
 
-🔗 *Connect Free Here* : https://dct.fwh.is
+🔗 *GitHub Repo* : https://github.com/sadewboy70
 
-✨ *ENJOY PREMIUM FREE BOT* ✨
+✨ *ENJOY PREMIUM BOT* ✨
 
-> 𝐏𝐎𝐖𝐄𝐑𝐄𝐃 𝐁𝐘 𝐃𝐂𝐓 𝐌𝐃 𝐌𝐈𝐍𝐈 𝐕1 🌩️💗
+> 𝐏𝐎𝐖𝐄𝐑𝐄𝐃 𝐁𝐘 ${botName} 🌩️💗
 `
 
         await conn.sendMessage(from, { delete: key });
@@ -93,10 +93,10 @@ async (conn, mek, m, { from, reply, pushname }) => {
                     forwardingScore: 999,
                     isForwarded: true,
                     externalAdReply: {
-                        title: "𝐃𝐂𝐓-𝐌𝐃",
-                        body: "Tap to Connect Free",
+                        title: botName,
+                        body: "Sadew Rashmika",
                         thumbnailUrl: logo,
-                        sourceUrl: "https://dct.fwh.is",
+                        sourceUrl: "https://github.com/sadewboy70",
                         mediaType: 1,
                         renderLargerThumbnail: true
                     }
