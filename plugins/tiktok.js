@@ -21,11 +21,26 @@ cmd({
 },
 async (conn, mek, m, { from, args, reply }) => {
     try {
-        const query = args[0];
+        // වචනත් එක්ක URL එකක් ආවොත් හරි, Reply කරලා තිබ්බොත් හරි ඒක ගන්නවා
+        let query = args.join(' ');
+        if (!query && mek.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+            const qm = mek.message.extendedTextMessage.contextInfo.quotedMessage;
+            query = qm.conversation || qm.extendedTextMessage?.text || qm.imageMessage?.caption || qm.videoMessage?.caption || "";
+        }
+
         if (!query) return reply("🔗 *ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴛɪᴋᴛᴏᴋ ʟɪɴᴋ!*");
 
-        const tiktokRegex = /(tiktok\.com|vt\.tiktok\.com)/;
-        if (!tiktokRegex.test(query)) {
+        // Message එක ඇතුලෙන් URL එක විතරක් වෙන් කරලා ගන්නවා
+        const extractUrl = (text) => {
+            const match = String(text || "").match(/https?:\/\/[^\s]+/i);
+            return match ? match[0].replace(/[),.]+$/, "") : text.trim();
+        };
+
+        const tiktokUrl = extractUrl(query);
+
+        // 'i' flag එක දාලා තියෙන නිසා Capital/Simple අවුලක් නෑ. vm, vt, t ඔක්කොම support කරනවා.
+        const tiktokRegex = /tiktok\.com|vt\.tiktok\.com|vm\.tiktok\.com|t\.tiktok\.com/i;
+        if (!tiktokRegex.test(tiktokUrl)) {
             return reply("❌ *ɪɴᴠᴀʟɪᴅ ᴛɪᴋᴛᴏᴋ ʟɪɴᴋ!*");
         }
 
@@ -46,7 +61,7 @@ async (conn, mek, m, { from, args, reply }) => {
 
         let data;
         try {
-            data = await fetchTikwmData(query);
+            data = await fetchTikwmData(tiktokUrl); // මෙතන query වෙනුවට tiktokUrl එක දැම්මා
         } catch (err) {
             return reply("❌ *ᴀᴘɪ ᴇʀʀᴏʀ: ᴜɴᴀʙʟᴇ ᴛᴏ ꜰᴇᴛᴄʜ ᴅᴀᴛᴀ ʀɪɢʜᴛ ɴᴏᴡ.*");
         }
@@ -70,7 +85,7 @@ async (conn, mek, m, { from, args, reply }) => {
             fileSizeMB = (fileSizeBytes / (1024 * 1024)).toFixed(2);
         }
 
-        const hdStatusText = isHD ? "ʜᴅ 1080ᴘ ✅" : "ɴᴏʀᴍᴀʟ ⚠️️";
+        const hdStatusText = isHD ? "ʜᴅ 1080ᴘ ✅" : "ɴᴏʀᴍᴀʟ ⚠️";
 
         const caption = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 🎐 ᴛɪᴋᴛᴏᴋ ᴅᴏᴡɴʟᴏᴀᴅᴇʀ 🎐
@@ -140,20 +155,21 @@ cmd({
 async (conn, mek, m, { from, args, reply }) => {
     try {
         let query = args.join(' ');
-        if (!query && mek.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation) {
-            query = mek.message.extendedTextMessage.contextInfo.quotedMessage.conversation;
+        if (!query && mek.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
+            const qm = mek.message.extendedTextMessage.contextInfo.quotedMessage;
+            query = qm.conversation || qm.extendedTextMessage?.text || qm.imageMessage?.caption || qm.videoMessage?.caption || "";
         }
 
         const extractUrl = (text) => {
             const match = String(text || "").match(/https?:\/\/[^\s]+/i);
-            return match ? match[0].replace(/[),.]+$/, "") : "";
+            return match ? match[0].replace(/[),.]+$/, "") : text.trim();
         };
 
         const tiktokUrl = extractUrl(query);
         const quality = "hd";
 
         if (!tiktokUrl) return reply("📸 *ᴘʟᴇᴀꜱᴇ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴛɪᴋᴛᴏᴋ ᴘʜᴏᴛᴏ ꜱʟɪᴅᴇꜱʜᴏᴡ ʟɪɴᴋ!*");
-        if (!/tiktok\.com|vt\.tiktok\.com|vm\.tiktok\.com/i.test(tiktokUrl)) {
+        if (!/tiktok\.com|vt\.tiktok\.com|vm\.tiktok\.com|t\.tiktok\.com/i.test(tiktokUrl)) {
             return reply("❌ *ɪɴᴠᴀʟɪᴅ ᴛɪᴋᴛᴏᴋ ʟɪɴᴋ!*");
         }
 
