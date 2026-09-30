@@ -50,32 +50,45 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 API Request (User-Agent එකත් එක්කම යවනවා බ්ලොක් නොවෙන්න)
-        const apiUrl = `https://supunofc.site/api/download/ytmp3-down?url=${encodeURIComponent(data.url)}&apikey=supun-ecjevwrksqz9q5m6rnbmgmqe`;
-        
-        const response = await axios.get(apiUrl, { 
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-            timeout: 20000 
-        });
-        
-        let res = response.data;
-        if (typeof res === "string") {
-            res = JSON.parse(res);
-        }
+        // 🟢 403 Error එන්නේ නැති (Proxy කරන) APIs ලැයිස්තුව
+        const apis = [
+            `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`,
+            `https://itzpire.com/download/youtube?url=${encodeURIComponent(data.url)}`,
+            `https://api.giftedtech.my.id/api/download/ytmp3?url=${encodeURIComponent(data.url)}&apikey=gifted`
+        ];
 
         let audioUrl = null;
-        if (res && res.success && res.result && Array.isArray(res.result)) {
-            const track = res.result.find(t => t.type === "Audio Track" && t.downloadUrl) || res.result[0];
-            if (track && track.downloadUrl) {
-                audioUrl = track.downloadUrl;
+
+        for (const api of apis) {
+            try {
+                const res = await axios.get(api, { timeout: 15000 });
+                const d = res.data;
+
+                // 1. Dark Yasiya API
+                if (d?.status && d?.result?.dl_link) {
+                    audioUrl = d.result.dl_link;
+                }
+                // 2. Itzpire API
+                else if (d?.data?.download?.mp3 || d?.data?.audio) {
+                    audioUrl = d.data.download?.mp3 || d.data.audio;
+                }
+                // 3. Gifted API
+                else if (d?.result?.download_url) {
+                    audioUrl = d.result.download_url;
+                }
+
+                if (audioUrl) break; // හරි Link එකක් හම්බුනා නම් Loop එකෙන් අයින් වෙනවා
+
+            } catch (e) {
+                // Ignore API Error and try the next one
             }
         }
 
         if (!audioUrl) {
-            return reply("❌ *API එකෙන් Download Link එක ලබා දුන්නේ නැත.*");
+            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (APIs ක්‍රියා විරහිතයි)*");
         }
 
-        // 📥 File එක Manual Download කිරීම (Baileys වලින් එන IP Block Error මගහරින්න)
+        // 📥 File එක Manual Download කිරීම (0.0s සහ Error මගහරින්න)
         const tempPath = path.join(__dirname, `temp_${Date.now()}.mp3`);
         const writer = fs.createWriteStream(tempPath);
 
@@ -97,14 +110,13 @@ async (conn, mek, m, {
             writer.on('error', reject);
         });
 
-        // 🛑 File එක හිස් එකක්ද කියලා බලනවා
         const stats = fs.statSync(tempPath);
         if (stats.size < 1000) {
             fs.unlinkSync(tempPath);
-            return reply("❌ *Download වූ File එක හිස්‍ ය. (Google IP Block).*");
+            return reply("❌ *Download වූ File එක හිස්‍ ය. වෙනත් සින්දුවක් උත්සාහ කරන්න.*");
         }
 
-        // 🚀 WhatsApp එකට යැවීම (0.0s එන්නේ නැති වෙන්න Local Path එක දෙනවා)
+        // 🚀 WhatsApp එකට යැවීම
         await conn.sendMessage(from, {
             audio: { url: tempPath },
             mimetype: "audio/mpeg",
@@ -112,14 +124,13 @@ async (conn, mek, m, {
             fileName: `${data.title}.mp3`
         }, { quoted: mek });
 
-        // යවලා ඉවර උනාට පස්සේ File එක මකනවා (Memory පිරෙන්නේ නෑ)
+        // යැව්වට පස්සේ File එක මකා දැමීම
         if (fs.existsSync(tempPath)) {
             fs.unlinkSync(tempPath);
         }
 
     } catch (e) {
         console.error("Global Error:", e);
-        // දැන් ඇත්තම Error එක මොකක්ද කියලා WhatsApp එකට එනවා 👇
         reply(`❌ *Error:* ${e.message}`);
     }
 });
