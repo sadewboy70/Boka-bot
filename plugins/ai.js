@@ -2,60 +2,54 @@ const { cmd } = require('../command');
 const axios = require('axios');
 const config = require('../config');
 
-// AI Models 37 (Aliases)
+// AI Models ඔක්කොම මෙතන තියෙනවා 🧠
 const aiModels = [
     "gpt", "claude", "mistral", "gemini", "deepseek", "venice", "groq", "cohere",
     "llama", "mixtral", "phi", "qwen", "falcon", "vicuna", "openchat", "wizard",
     "zephyr", "codellama", "starcoder", "dolphin", "nous", "openhermes", "neural",
     "solar", "yi", "tinyllama", "orca", "command", "nemotron", "internlm",
     "chatglm", "wormgpt", "blackbox", "replit", "notegpt", "notegpt-deepseek", "notegpt-pro",
-    "ai"
+    "ai", "darkai"
 ];
 
-cmd({
-    pattern: "ai",
-    alias: aiModels, 
-    desc: "All-in-One AI Chat",
-    category: "ai",
-    react: "🧠",
-    filename: __filename
-},
-async (conn, mek, m, { from, q, reply, command }) => {
-    try {
-        // User type කරපු text එක හෝ reply කරපු text එක
-        let query = q || 
-            (mek.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation) || 
-            (mek.message?.extendedTextMessage?.contextInfo?.quotedMessage?.extendedTextMessage?.text);
-        
-        if (!query) return reply("💭 *කරුණාකර ප්‍රශ්නයක් ඇතුළත් කරන්න!*\n💡 _උදා: .gpt Hello කොහොමද?_");
+// 🟢 Loop එකක් හරහා හැම AI එකක්ම වෙනම Command එකක් විදිහට Auto Register කරනවා 🟢
+aiModels.forEach(model => {
+    cmd({
+        pattern: model,
+        desc: `Chat with ${model.toUpperCase()} AI`,
+        category: "ai", // 👈 මේක නිසා Menu එකේ AI category එකට ඔටෝම යනවා
+        react: "🧠",
+        filename: __filename
+    },
+    async (conn, mek, m, { from, q, reply, command }) => {
+        try {
+            let query = q || 
+                (mek.message?.extendedTextMessage?.contextInfo?.quotedMessage?.conversation) || 
+                (mek.message?.extendedTextMessage?.contextInfo?.quotedMessage?.extendedTextMessage?.text);
+            
+            if (!query) return reply(`💭 *කරුණාකර ප්‍රශ්නයක් ඇතුළත් කරන්න!*\n💡 _උදා: .${model} Hello කොහොමද?_`);
 
-        await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
+            await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
-        let targetModel = command.toLowerCase();
-        if (targetModel === 'ai') targetModel = 'gpt'; // Default 'ai' නම් 'gpt' වලට මාරු වීම
-        
-        const botName = config.BOT_NAME || "SADEW-MINI";
-        const apiKey = "wxa_f_92eb2d554e"; 
-        const apiUrl = `https://apix.wolvarex.com/api/ai/${targetModel}`;
+            let targetModel = command.toLowerCase();
+            if (targetModel === 'ai' || targetModel === 'darkai') targetModel = 'gpt'; 
+            
+            const botName = config.BOT_NAME || "SADEW-MINI";
+            const apiKey = "wxa_f_92eb2d554e"; 
+            
+            // API Request URL
+            const apiUrl = `https://apix.wolvarex.com/api/ai/${targetModel}?q=${encodeURIComponent(query)}&key=${apiKey}`;
 
-        // 🟢 100% Correct Request Format (Axios Params මඟින් යැවීම)
-        const response = await axios.get(apiUrl, {
-            params: {
-                q: query,
-                key: apiKey
-            },
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "application/json"
-            },
-            timeout: 45000
-        });
+            const response = await axios.get(apiUrl, { timeout: 45000 });
+            const res = response.data;
 
-        // 🟢 Validate Response
-        if (response.data && response.data.status === true && response.data.result) {
-            const aiReply = response.data.result;
+            if (res && res.status === true && res.result) {
+                let aiReply = res.result;
 
-            const caption = 
+                // WormGPT වල "WormGPT: " කියලා එන කෑල්ල අයින් කරනවා
+                aiReply = aiReply.replace(/^WormGPT:\s*/i, '').trim();
+
+                const caption = 
 `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 🎀 ᴀɪ ʀᴇꜱᴘᴏɴꜱᴇ 🎀
 ┊
@@ -66,25 +60,19 @@ ${aiReply}
 
 > ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName} 🎐`;
 
-            await conn.sendMessage(from, { text: caption }, { quoted: mek });
-            await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-            
-        } else {
-            // API එකෙන් Result එකක් නැතුව වෙන Error එකක් ආවොත් (Full JSON එකම පෙන්වයි)
-            console.log("API Invalid Response:", response.data);
-            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-            reply(`❌ *API Response Error:* ${JSON.stringify(response.data)}`);
-        }
+                await conn.sendMessage(from, { text: caption }, { quoted: mek });
+                await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+                
+            } else {
+                console.log("Invalid API Response:", res);
+                await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+                reply(`❌ *API Response Error:* දත්ත ලබාගැනීමට නොහැකි විය.`);
+            }
 
-    } catch (e) {
-        console.error("Wolvarex API Error:", e.message);
-        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
-        
-        // Network හෝ Server Error එකක් නම් ඒක හරියටම පෙන්වන්න
-        if (e.response) {
-            reply(`❌ *Server Error:* ${e.response.status}\n${JSON.stringify(e.response.data)}`);
-        } else {
+        } catch (e) {
+            console.error("AI Error:", e.message);
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
             reply(`❌ *දෝෂයක් ඇතිවිය:* ${e.message}`);
         }
-    }
+    });
 });
