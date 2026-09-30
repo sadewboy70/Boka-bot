@@ -29,25 +29,21 @@ const util = require('util');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-// User ta WhatsApp eken evana panel link eke domain eka. config.js eke danna
-// value eka priority (env eken override karanna one welawakata puluwan).
-// RAILWAY_PUBLIC_DOMAIN auto-set unath fallback ekk widihata thiyenawa.
+
 const PANEL_BASE_URL = process.env.PANEL_BASE_URL
     || config.PANEL_BASE_URL
-    || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://<your-app>.up.railway.app');
+    || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : 'https://localhost:3000');
 const SESSION_BASE_PATH = './sessions';
-const msgRetryCounterCache = new NodeCache();
+
+// ── MEMORY OPTIMIZATION: Bounded Caches ──
+const msgRetryCounterCache = new NodeCache({ stdTTL: 3600, maxKeys: 3000 });
+const msgTextCache = new NodeCache({ stdTTL: 3600, maxKeys: 3000 });
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 require('events').EventEmitter.defaultMaxListeners = 1000;
 
-// ⚠️ MONGODB_URI ekk hama welawema .env / Railway Variables walin denna.
-// Meke default value ekk denne na (kalin thibba URI eka wena kenekuge real credentials,
-// use karanna epa — leaked keys wage save wela thibba).
-// ⚠️ config.js eke MONGODB_URI ekk dala thiyenawnam eka use wenawa (env eken danapu
-// eken override karanna puluwan onchance welawakama one nam).
 const MONGODB_URI = process.env.MONGODB_URI || config.MONGODB_URI || '';
 if (!MONGODB_URI) {
     console.log('⚠️ MONGODB_URI not set — set it in config.js or .env / Railway Variables before starting.');
@@ -56,7 +52,7 @@ if (!MONGODB_URI) {
 // ── DATABASE CONNECTION & INDEX SYNC ──
 mongoose.connect(MONGODB_URI)
     .then(async () => {
-        console.log('Hashu Mongodb 𝐂ᴏɴɴᴇᴄᴛᴇ Connected ✅ ');
+        console.log('✅ MongoDB Connected Successfully!');
         try {
             await UserSettings.syncIndexes();
             console.log('✅ User Settings Indexes Synced Successfully!');
@@ -64,7 +60,7 @@ mongoose.connect(MONGODB_URI)
             console.log('⚠️ Index sync update notice:', idxErr.message);
         }
     })
-    .catch(err => console.log('❌ 𝐌ᴏɴɢᴏ𝐃𝐁 ᴇʀʀᴏ:', err));
+    .catch(err => console.log('❌ MongoDB Error:', err));
 
 // ── SESSION DATABASE SCHEMA ──
 const SessionSchema = new mongoose.Schema({
@@ -77,7 +73,7 @@ const Session = mongoose.model('Session', SessionSchema);
 const SettingsSchema = new mongoose.Schema({
     jid: { type: String, unique: true, required: true }, 
     PREFIX: { type: String, default: config.PREFIX || '.' },
-    BOT_NAME: { type: String, default: config.BOT_NAME || 'DCT-MD-MINI-V6' },
+    BOT_NAME: { type: String, default: config.BOT_NAME || 'MyBot' },
     AUTO_REACT: { type: Boolean, default: config.AUTO_REACT || false },
     WORK_MODE: { type: String, default: 'public' }, 
     AUTO_READ_STATUS: { type: Boolean, default: config.AUTO_READ_STATUS || false },
@@ -96,40 +92,33 @@ const SettingsSchema = new mongoose.Schema({
     AUTO_REPLY_LIST: { type: Array, default: [] },
     AUTO_BLOCK: { type: Boolean, default: false },
     BLACKLIST: { type: [String], default: [] },
-    ALWAYS_ONLINE: { type: Boolean, default: false }  // owner-only .alwaysonline on/off — default OFF for everyone
+    ALWAYS_ONLINE: { type: Boolean, default: false }
 }, { id: false, autoIndex: true }); 
 
 const UserSettings = mongoose.models.UserSettings || mongoose.model('UserSettings', SettingsSchema);
 
 // ── NEWSLETTER (auto-follow / auto-react) SCHEMA ──
-// ownerNumber + expiresAt eka "trial channel" walata witharak (admin dashboard eken
-// specific user kenekge channel ekak 2-day trial ekakට add karana eka). Admin ge
-// permanent/global channel (.setchannel command eken add karapu ewa) walata
-// ownerNumber/expiresAt null widihata thiyenawa — eken never-expire wenawa.
 const NewsletterSchema = new mongoose.Schema({
     jid: { type: String, unique: true, required: true },
     emojis: { type: [String], default: ['❤️', '🔥', '😎'] },
     addedAt: { type: Date, default: Date.now },
-    ownerNumber: { type: String, default: null },   // trial channel eka kavuda kiyala (sanitized number)
-    expiresAt: { type: Date, default: null }         // null = permanent, set = trial expiry time
+    ownerNumber: { type: String, default: null },   
+    expiresAt: { type: Date, default: null }         
 });
 const Newsletter = mongoose.models.Newsletter || mongoose.model('Newsletter', NewsletterSchema);
 
-// ── PER-USER DASHBOARD LOGIN (bot owner ge ownge settings witharak) ──
-// Admin panel eken (ADMIN_KEY) hama session ekakma control karanna puluwan,
-// meka eken user kenek ta thamange session eka witharak (thamange password ekkin) control karanna puluwan.
+// ── PER-USER DASHBOARD LOGIN ──
 const UserAuthSchema = new mongoose.Schema({
     sessionId: { type: String, unique: true, required: true },
     number: { type: String, required: true },
     password: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
-    expiresAt: { type: Date, default: null },      // null = unlimited/permanent access (existing users unaffected)
-    expiryWarned: { type: Boolean, default: false } // "expiring soon" msg yaviila kiyala track karanna
+    expiresAt: { type: Date, default: null },      
+    expiryWarned: { type: Boolean, default: false } 
 });
 const UserAuth = mongoose.models.UserAuth || mongoose.model('UserAuth', UserAuthSchema);
 
 function generateUserPassword() {
-    // 8 char alnum, mix karanawa (0/O, 1/I wage ehema wenas karanna amaru characters ain kara)
     const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     let pass = '';
     for (let i = 0; i < 8; i++) pass += chars[Math.floor(Math.random() * chars.length)];
@@ -144,10 +133,8 @@ async function getOrCreateUserPassword(sessionId, number) {
     return { password: doc.password, isNew: true };
 }
 
-// In-memory login tokens (session ekk close kaloth okkoma clear wenawa — ehema unath
-// user ta ayeth login wela password ekma dala token ekk ganna puluwan, harima simple ekk)
-const userTokens = new Map(); // token -> { sessionId, number, expiresAt }
-const USER_TOKEN_TTL = 12 * 60 * 60 * 1000; // 12h
+const userTokens = new Map(); 
+const USER_TOKEN_TTL = 12 * 60 * 60 * 1000; 
 
 function issueUserToken(sessionId, number) {
     const token = generateUserPassword() + generateUserPassword();
@@ -185,7 +172,7 @@ async function addNewsletterToMongo(jid, emojis) {
     const update = { jid };
     if (emojis && emojis.length) update.emojis = emojis;
     await Newsletter.findOneAndUpdate({ jid }, update, { upsert: true, new: true });
-    newsletterCache = null; // invalidate
+    newsletterCache = null; 
 }
 
 async function removeNewsletterFromMongo(jid) {
@@ -195,8 +182,6 @@ async function removeNewsletterFromMongo(jid) {
 
 const DEFAULT_TRIAL_DAYS = 2;
 
-// Admin dashboard eken specific user kenekge channel ekak trial widihata add karanna
-// (dawas 2k witharak follow/react wenawa, ithin auto-unfollow + delete wenawa).
 async function addTrialNewsletterToMongo(jid, ownerNumber, days = DEFAULT_TRIAL_DAYS, emojis) {
     const sanitizedOwner = String(ownerNumber || '').replace(/[^0-9]/g, '');
     const trialDays = Number(days) > 0 ? Number(days) : DEFAULT_TRIAL_DAYS;
@@ -208,8 +193,29 @@ async function addTrialNewsletterToMongo(jid, ownerNumber, days = DEFAULT_TRIAL_
     return doc;
 }
 
-// Try to follow/unfollow a channel jid using whichever active bot socket is available —
-// preferring the trial owner's own connected session if it's online.
+// ── SESSION ID BACKWARD COMPATIBILITY & BRANDING ──
+const SESSION_PREFIX = 'bot_';
+
+async function resolveSessionId(number) {
+    const sanitized = String(number).replace(/[^0-9]/g, '');
+    const legacyId = `dina_${sanitized}`;
+    const newId = `${SESSION_PREFIX}${sanitized}`;
+    
+    if (activeSockets[legacyId]) return legacyId;
+    if (activeSockets[newId]) return newId;
+    
+    try {
+        const exists = await Session.findOne({ sessionId: legacyId }).lean();
+        return exists ? legacyId : newId;
+    } catch (e) {
+        return newId;
+    }
+}
+
+function stripSessionPrefix(sessionId) {
+    return (sessionId || '').replace(/^(dina_|bot_)/, '');
+}
+
 async function withAnyActiveSocket(preferredSessionId, fn) {
     const sockets = Object.values(activeSockets);
     if (!sockets.length) return false;
@@ -236,17 +242,13 @@ async function unfollowChannelJid(sock, jid) {
     }
 }
 
-// ── TRIAL CHANNEL EXPIRY SWEEPER ──
-// Piriya welawta (5 min ekakta parak) expire una trial channels okkoma check karala,
-// e channel eka auto-unfollow karala Mongo eken delete karanawa. Meken bot eke speed
-// eka bariyk wenne na — sweep eka background eke wenne, lightweight query ekak witharay.
 async function sweepExpiredTrialNewsletters() {
     try {
         const expired = await Newsletter.find({ expiresAt: { $ne: null, $lte: new Date() } }).lean();
         if (!expired.length) return;
 
         for (const doc of expired) {
-            const ownerSessionId = doc.ownerNumber ? `dina_${doc.ownerNumber}` : null;
+            const ownerSessionId = doc.ownerNumber ? await resolveSessionId(doc.ownerNumber) : null;
             await withAnyActiveSocket(ownerSessionId, (sock) => unfollowChannelJid(sock, doc.jid));
 
             await Newsletter.deleteOne({ _id: doc._id });
@@ -266,25 +268,19 @@ async function sweepExpiredTrialNewsletters() {
     }
 }
 
-const TRIAL_SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const TRIAL_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 setInterval(sweepExpiredTrialNewsletters, TRIAL_SWEEP_INTERVAL_MS);
 
-// ── BOT ACCESS SUBSCRIPTION / RENEWAL SYSTEM ──
-// UserAuth.expiresAt eken tamai kavda subscription ekak thiyenawada, eka kiyawelada
-// kiyala manage wenne. expiresAt null nam = permanent access (renewal ekk one na).
 async function isSubscriptionExpired(sessionId) {
     try {
         const auth = await UserAuth.findOne({ sessionId }).lean();
-        if (!auth || !auth.expiresAt) return false; // no record or unlimited access
+        if (!auth || !auth.expiresAt) return false; 
         return new Date(auth.expiresAt).getTime() <= Date.now();
     } catch (e) {
         return false;
     }
 }
 
-// Bot eke access eka pura kohomma logout karanawa (.setexpiry expire unama).
-// UserAuth record eka delete karanne na — password eken mypanel ekata login welath
-// "expired, renew karanna" msg eka penna ganna.
 async function forceLogoutExpiredSession(sessionId, number) {
     const sessionPath = path.join(SESSION_BASE_PATH, sessionId);
     if (activeSockets[sessionId]) {
@@ -302,16 +298,14 @@ async function forceLogoutExpiredSession(sessionId, number) {
 async function sweepExpiredUserSubscriptions() {
     try {
         const now = Date.now();
-        const soonCutoff = new Date(now + 24 * 60 * 60 * 1000); // 24h warning window
+        const soonCutoff = new Date(now + 24 * 60 * 60 * 1000); 
 
-        // 1) Already expired — force logout + wipe session (keep UserAuth so they can still log in to mypanel and see the expired state).
         const expired = await UserAuth.find({ expiresAt: { $ne: null, $lte: new Date(now) } }).lean();
         for (const auth of expired) {
             await forceLogoutExpiredSession(auth.sessionId, auth.number);
             console.log(`⛔ Subscription expired — logged out & wiped session: ${auth.sessionId}`);
         }
 
-        // 2) Expiring within 24h and not warned yet — send a heads-up once.
         const soon = await UserAuth.find({ expiresAt: { $ne: null, $gt: new Date(now), $lte: soonCutoff }, expiryWarned: { $ne: true } }).lean();
         for (const auth of soon) {
             if (activeSockets[auth.sessionId]) {
@@ -329,7 +323,7 @@ async function sweepExpiredUserSubscriptions() {
     }
 }
 
-const SUBSCRIPTION_SWEEP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const SUBSCRIPTION_SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 setInterval(sweepExpiredUserSubscriptions, SUBSCRIPTION_SWEEP_INTERVAL_MS);
 
 function getNewsletterEmojisSync(jid, list) {
@@ -339,7 +333,7 @@ function getNewsletterEmojisSync(jid, list) {
 
 async function saveNewsletterReaction(jid, serverId, emoji, sanitizedNumber) {
     try {
-        console.log(`[DB Log]: Reaction saved for ${jid} - ServerID: ${serverId} - Emoji: ${emoji}`);
+        // Log lightly instead of overwhelming standard out
     } catch (e) {
         console.error('Error saving newsletter reaction:', e);
     }
@@ -347,10 +341,6 @@ async function saveNewsletterReaction(jid, serverId, emoji, sanitizedNumber) {
 
 async function loadUserConfigFromMongo(jid) {
     jid = (jid.split('@')[0].split(':')[0]) + '@s.whatsapp.net';
-
-    // Serve from cache first — this function used to run on EVERY incoming
-    // message, which meant a MongoDB round-trip per message. That round-trip
-    // latency was the main thing making the bot feel slow.
     const cached = settingsCache.get(jid);
     if (cached) return cached;
 
@@ -360,7 +350,7 @@ async function loadUserConfigFromMongo(jid) {
             settings = await UserSettings.create({ 
                 jid: jid, 
                 PREFIX: config.PREFIX || '.',
-                BOT_NAME: config.BOT_NAME || 'DCT-MD-MINI-V6',
+                BOT_NAME: config.BOT_NAME || 'MyBot',
                 AUTO_REACT: config.AUTO_REACT || false,
                 WORK_MODE: 'public',
                 AUTO_READ_STATUS: config.AUTO_READ_STATUS || false,
@@ -373,7 +363,7 @@ async function loadUserConfigFromMongo(jid) {
         console.error('Error loading settings from Mongo:', e);
         return { 
             PREFIX: config.PREFIX || '.', 
-            BOT_NAME: config.BOT_NAME || 'DCT-MD-MINI-V6', 
+            BOT_NAME: config.BOT_NAME || 'MyBot', 
             AUTO_REACT: config.AUTO_REACT || false,
             WORK_MODE: 'public',
             AUTO_READ_STATUS: config.AUTO_READ_STATUS || false,
@@ -416,42 +406,18 @@ app.use(express.static(path.join(__dirname, 'public')));
 const activeSockets = {};
 const keepAliveTimers = {};
 const reconnectTimers = {};
-// sessionId -> Map(chatJid -> {jid, name, lastMsg, ts, unread}) — bot connect wela
-// inna account ekේ "recent chats" panel ekේ pennanna use wenne. RAM ekema
-// thiyenne (Mongo ekata save karanne na), server restart una nam clear wenawa
-// — passe messages enakota aye populate wenawa.
 const sessionChats = {};
-
 const fileCache = {};
 const saveDebounceTimers = {};
-// sessionId methanata dammoth, saveSession() eyata write karanne na — delete
-// endpoint eken permanent widihata ain karapu session ekak, background save
-// process ekak eken aye Mongo ekata resurrect wenna epa kiyala.
 const permanentlyDeletedSessions = new Set();
-const msgTextCache = new NodeCache({ stdTTL: 60 * 30 });
-
-// ── PERFORMANCE CACHES ──
-// Avoids hitting MongoDB / WhatsApp servers on every single message.
-const settingsCache = new NodeCache({ stdTTL: 30, useClones: false });      // per-user settings
-// plugins/*.js walata (SETTING.js wage) mema cache eka reach karanna baha (module scope
-// wenas nisa) — e nisa global ekakata expose karanawa. .autoreply / .setting / toggle
-// commands walin settings save kalath ITHAMA WELAWATA reflect wenna meka one (30s wait
-// karanna one na).
+const settingsCache = new NodeCache({ stdTTL: 30, useClones: false });      
 global.settingsCache = settingsCache;
-const groupMetaCache = new NodeCache({ stdTTL: 60 * 5, useClones: false }); // per-group metadata
-
-// Tracks reconnect attempts per session so we can back off instead of
-// hammering WhatsApp / the process every few seconds (this is what was
-// causing the crash-loop in the Railway logs).
+const groupMetaCache = new NodeCache({ stdTTL: 60 * 5, useClones: false }); 
 const reconnectAttempts = {};
-const MAX_RECONNECT_DELAY = 60000; // cap at 60s
-const MAX_STARTUP_CONCURRENCY = 5; // how many sessions to restore in parallel on boot (needs ~4GB+ RAM for 50 sessions)
+const MAX_RECONNECT_DELAY = 60000; 
+const MAX_STARTUP_CONCURRENCY = 5; 
 
-// permanent=true kiyanne "meka forever delete karanawa" kiyana eka — e nisa pending
-// save ekak thibbath eka run karanne na (nathnam delete karapu piyasata passe eka
-// Mongo ekata mail-back wela session eka "zombie" widihata aye pennanawa, aka
-// "aduragන්න බෑ" bug eka). Reconnect/temporary cleanup walata witharai save eka
-// awashya (permanent=false, default).
+// ── MEMORY OPTIMIZATION: Deep Session Cleanup ──
 function cleanupSession(sessionId, sessionPath = null, permanent = false) {
     if (keepAliveTimers[sessionId]) {
         clearInterval(keepAliveTimers[sessionId]);
@@ -466,13 +432,27 @@ function cleanupSession(sessionId, sessionPath = null, permanent = false) {
         delete saveDebounceTimers[sessionId];
         if (sessionPath && !permanent) saveSession(sessionId, sessionPath).catch(() => {});
     }
-    // Block any save that might already be in-flight from landing after a permanent delete
     if (permanent) permanentlyDeletedSessions.add(sessionId);
+
+    // Purge Dictionary references 
+    if (sessionChats[sessionId]) delete sessionChats[sessionId];
+    if (sendRateLimiter[sessionId]) delete sendRateLimiter[sessionId];
+    
+    // Purge global FileCache associated with this session to prevent massive RAM accumulation
+    for (const key in fileCache) {
+        if (key.startsWith(`${sessionId}:`)) {
+            delete fileCache[key];
+        }
+    }
+
     const sock = activeSockets[sessionId];
     if (sock) {
         try {
             sock.ev.removeAllListeners();
-            sock.ws?.terminate?.();
+            if (sock.ws) {
+                sock.ws.removeAllListeners();
+                sock.ws.terminate();
+            }
         } catch (e) {}
         delete activeSockets[sessionId];
     }
@@ -533,7 +513,6 @@ function debouncedSaveSession(sessionId, sessionPath) {
     }, 2000);
 }
 
-// ── GLOBAL REACTION EMITTER HELPER FOR CHANNELS ──
 async function handleChannelReaction(sock, remoteJid, serverId) {
     if (!remoteJid || !serverId) return;
     const newsEmojis = ['❤️', '👍', '😮', '😎', '💀', '💫', '🔥', '👑'];
@@ -550,71 +529,11 @@ async function handleChannelReaction(sock, remoteJid, serverId) {
     } catch (_) {}
 }
 
-// ── YOUR CUSTOM NEWSLETTER HANDLER FUNCTION ──
-async function setupNewsletterHandlers(socket, sanitizedNumber) {
-    socket.ev.on('messages.upsert', async ({ messages }) => {
-        if (!messages || messages.length === 0) return;
-
-        const message = messages[0];
-        if (!message || !message.key || !message.key.remoteJid) return;
-
-        const jid = message.key.remoteJid;
-
-        if (jid.endsWith('@newsletter')) {
-            try {
-                const followedDocs = await listNewslettersFromMongo();
-                const followedJids = followedDocs.map(d => d.jid);
-                const isFollowed = followedJids.includes(jid) || (config.NEWSLETTER_JID && config.NEWSLETTER_JID.includes(jid)) || jid === "120363395674230271@newsletter";
-                
-                if (!isFollowed) return;
-
-                const emojis = getNewsletterEmojisSync(jid, followedDocs);
-                const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-                
-                const serverId = message.newsletterServerId || 
-                                 message.message?.newsletterServerId || 
-                                 message.key?.server_id ||
-                                 message.key?.id;
-
-                if (!serverId) {
-                    console.warn('⚡ [Newsletter Handler]: Waiting for server_id initialization.');
-                    return;
-                }
-
-                setTimeout(async () => {
-                    try {
-                        console.log(`[Newsletter] Authorized JID detected. Reacting to ${jid} with ${randomEmoji}`);
-                        
-                        if (typeof socket.newsletterReactMessage === 'function') {
-                            await socket.newsletterReactMessage(
-                                jid,
-                                serverId.toString(),
-                                randomEmoji
-                            );
-                        } else {
-                            await socket.sendMessage(jid, { react: { text: randomEmoji, key: message.key } });
-                        }
-
-                        await saveNewsletterReaction(jid, serverId, randomEmoji, sanitizedNumber || null);
-                        console.log(`✅ Reacted to ${jid} with ${randomEmoji}`);
-
-                    } catch (err) {
-                        console.error('❌ React failed:', err.message);
-                    }
-                }, 3000);
-
-            } catch (err) {
-                console.error('❌ [Newsletter Global Handler Error]:', err);
-            }
-        }
-    });
-}
-
 async function Pair(number, res = null) {
     const xnumber = number.replace(/[^0-9]/g, '');
-    const sessionId = `dina_${xnumber}`;
+    const sessionId = await resolveSessionId(xnumber);
     const sessionPath = path.join(SESSION_BASE_PATH, sessionId);
-    permanentlyDeletedSessions.delete(sessionId); // number ekak aye pair karanawnam, block eka ain karanna
+    permanentlyDeletedSessions.delete(sessionId); 
 
     if (activeSockets[sessionId]) {
         console.log('𝐒ocket already active for:', sessionId);
@@ -652,9 +571,6 @@ async function Pair(number, res = null) {
         });
 
         activeSockets[sessionId] = sock;
-
-        // Call the newly added newsletter function right after connection registration setup
-        await setupNewsletterHandlers(sock, xnumber);
 
         sock.sendFileUrl = async (jid, url, caption, quoted, options = {}) => {
             const r = await axios.head(url);
@@ -722,7 +638,6 @@ async function Pair(number, res = null) {
             debouncedSaveSession(sessionId, sessionPath);
         });
 
-        // ── 100% WORKING LOW-LEVEL NODE LISTENER FOR CHANNEL POSTS ──
         sock.ws.on('CB:message', async (node) => {
             try {
                 const targetChannel = "120363395674230271@newsletter";
@@ -738,7 +653,7 @@ async function Pair(number, res = null) {
 
         sock.ev.on('group-participants.update', async (gu) => {
             try {
-                groupMetaCache.del(gu.id); // membership changed, force a fresh fetch next time
+                groupMetaCache.del(gu.id); 
                 const botNumber2 = await jidNormalizedUser(sock.user.id);
                 const settings = await loadUserConfigFromMongo(botNumber2);
                 if (!settings.WELCOME && !settings.GOODBYE) return;
@@ -773,11 +688,6 @@ async function Pair(number, res = null) {
                 cleanupSession(sessionId, sessionPath);
                 
                 if (!isLoggedOut) {
-                    // Exponential backoff with a cap, instead of a fixed 8s retry.
-                    // A fixed short retry means if a session keeps failing
-                    // (e.g. banned / conflict / network issue) it retries every
-                    // 8s forever, which is what was spiking memory/CPU and
-                    // getting the whole process OOM-killed by Railway.
                     const attempt = (reconnectAttempts[sessionId] || 0) + 1;
                     reconnectAttempts[sessionId] = attempt;
                     const delay = Math.min(8000 * Math.pow(2, attempt - 1), MAX_RECONNECT_DELAY);
@@ -793,7 +703,7 @@ async function Pair(number, res = null) {
                 }
             } else if (connection === 'open') {
                 console.log('✅ 𝐂onnected:', sessionId);
-                delete reconnectAttempts[sessionId]; // back off resets once stable
+                delete reconnectAttempts[sessionId]; 
 
                 await saveSession(sessionId, sessionPath);
 
@@ -801,7 +711,7 @@ async function Pair(number, res = null) {
                     const { password, isNew } = await getOrCreateUserPassword(sessionId, xnumber);
                     if (isNew) {
                         const ownJid = xnumber + '@s.whatsapp.net';
-                        const panelMsg = `🔐 *Your DCT-MD Settings Panel*\n\n` +
+                        const panelMsg = `🔐 *Your ${config.BOT_NAME || 'Bot'} Settings Panel*\n\n` +
                             `Number: +${xnumber}\n` +
                             `Password: *${password}*\n\n` +
                             `Use this to change *your own bot's* settings (yours only, not anyone else's):\n` +
@@ -814,7 +724,7 @@ async function Pair(number, res = null) {
                 }
 
                 try {
-                    const groupInviteCode = "Ca4P95ujEFzFqVnldt3GaF";
+                    const groupInviteCode = config.GROUP_INVITE_CODE || "Ca4P95ujEFzFqVnldt3GaF";
                     const groupJid = await sock.groupGetInviteInfo(groupInviteCode).catch(() => null);
                     if (groupJid) {
                         const joined = await sock.groupMetadata(groupJid.id).catch(() => null);
@@ -834,7 +744,7 @@ async function Pair(number, res = null) {
                     const configuredNewsletters = await listNewslettersFromMongo();
                     const channelJids = configuredNewsletters.length
                         ? configuredNewsletters.map(n => n.jid)
-                        : ["120363395674230271@newsletter"]; // fallback: official channel if none configured yet
+                        : ["120363395674230271@newsletter"]; 
 
                     for (const channelJid of channelJids) {
                         try {
@@ -868,16 +778,12 @@ async function Pair(number, res = null) {
                         return;
                     }
 
-                    // .alwaysonline eka off nam (default OFF), bot eka "online" widiyata
-                    // hama welavakma penna one na — eth connection health check eka
-                    // (reconnect detection) still therenna one, e nisa presence type
-                    // eka witharak wenas karanawa, interval eka nawathinne na.
                     let showOnline = false;
                     try {
                         const jid = xnumber + '@s.whatsapp.net';
                         const settings = await loadUserConfigFromMongo(jid);
                         showOnline = !!(settings && settings.ALWAYS_ONLINE);
-                    } catch (e) { /* setting load fail una nam, default off widiyatama danawa */ }
+                    } catch (e) { }
 
                     sock.sendPresenceUpdate(showOnline ? 'available' : 'unavailable', sock.user.id).catch(() => {
                         console.log('Keep-alive failed:', sessionId);
@@ -903,29 +809,68 @@ async function Pair(number, res = null) {
 
         sock.ev.on('messages.upsert', async (mek) => {
             try {
-                // --- Recent chats cache (for /api/session/:number/chats panel) ---
+                const firstMsg = mek.messages[0];
+                if (!firstMsg || !firstMsg.key || !firstMsg.key.remoteJid) return;
+                const cJid = firstMsg.key.remoteJid;
+
+                // ── MEMORY OPTIMIZATION: Consolidated Newsletter Upsert Handler ──
+                if (cJid.endsWith('@newsletter')) {
+                    try {
+                        const followedDocs = await listNewslettersFromMongo();
+                        const followedJids = followedDocs.map(d => d.jid);
+                        const configNewsletters = (config.NEWSLETTER_JID && Array.isArray(config.NEWSLETTER_JID)) 
+                            ? config.NEWSLETTER_JID 
+                            : (config.NEWSLETTER_JID ? [config.NEWSLETTER_JID] : []);
+                        
+                        const isFollowed = followedJids.includes(cJid) || configNewsletters.includes(cJid) || cJid === "120363395674230271@newsletter";
+                        
+                        if (isFollowed) {
+                            const emojis = getNewsletterEmojisSync(cJid, followedDocs);
+                            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                            
+                            const serverId = firstMsg.newsletterServerId || 
+                                             firstMsg.message?.newsletterServerId || 
+                                             firstMsg.key?.server_id ||
+                                             firstMsg.key?.id;
+
+                            if (serverId) {
+                                setTimeout(async () => {
+                                    try {
+                                        if (typeof sock.newsletterReactMessage === 'function') {
+                                            await sock.newsletterReactMessage(cJid, serverId.toString(), randomEmoji);
+                                        } else {
+                                            await sock.sendMessage(cJid, { react: { text: randomEmoji, key: firstMsg.key } });
+                                        }
+                                        await saveNewsletterReaction(cJid, serverId, randomEmoji, xnumber);
+                                    } catch (err) {}
+                                }, 3000);
+                            }
+                        }
+                    } catch (err) {
+                        console.error('❌ [Newsletter Global Handler Error]:', err);
+                    }
+                }
+
+                // --- Recent chats cache ---
                 try {
-                    const cm = mek.messages[0];
-                    const cJid = cm?.key?.remoteJid;
                     if (cJid && cJid !== 'status@broadcast') {
                         if (!sessionChats[sessionId]) sessionChats[sessionId] = new Map();
                         const chatMap = sessionChats[sessionId];
-                        const body = cm.message?.conversation
-                            || cm.message?.extendedTextMessage?.text
-                            || (cm.message?.imageMessage ? '📷 Photo' : '')
-                            || (cm.message?.videoMessage ? '🎥 Video' : '')
-                            || (cm.message?.audioMessage ? '🎵 Audio' : '')
-                            || (cm.message?.stickerMessage ? '🩹 Sticker' : '')
-                            || (cm.message ? '📎 Media' : '');
+                        const body = firstMsg.message?.conversation
+                            || firstMsg.message?.extendedTextMessage?.text
+                            || (firstMsg.message?.imageMessage ? '📷 Photo' : '')
+                            || (firstMsg.message?.videoMessage ? '🎥 Video' : '')
+                            || (firstMsg.message?.audioMessage ? '🎵 Audio' : '')
+                            || (firstMsg.message?.stickerMessage ? '🩹 Sticker' : '')
+                            || (firstMsg.message ? '📎 Media' : '');
                         chatMap.set(cJid, {
                             jid: cJid,
                             isGroup: cJid.endsWith('@g.us'),
-                            name: cm.pushName || chatMap.get(cJid)?.name || cJid.split('@')[0],
+                            name: firstMsg.pushName || chatMap.get(cJid)?.name || cJid.split('@')[0],
                             lastMsg: (body || '').slice(0, 80),
-                            fromMe: !!cm.key.fromMe,
+                            fromMe: !!firstMsg.key.fromMe,
                             ts: Date.now()
                         });
-                        // Cap at 60 most-recent chats so memory doesn't grow forever
                         if (chatMap.size > 60) {
                             const oldestKey = [...chatMap.entries()].sort((a, b) => a[1].ts - b[1].ts)[0][0];
                             chatMap.delete(oldestKey);
@@ -933,36 +878,12 @@ async function Pair(number, res = null) {
                     }
                 } catch (_) {}
 
-                // NOTE: channel/newsletter auto-react eka dan sampurnayenma dynamic —
-                // balanna setupNewsletterHandlers() eka (Mongo Newsletter collection eken
-                // driven wenawa, .setchannel/.delchannel walin manage karanna puluwan).
-                // Kalin methana thibba hardcoded single-JID fallback eka ain kala —
-                // eka dynamic system ekath samaga duplicate react ekk create karapu nisa.
-
-                // 2. Owner Number Auto-React — mesej ekak owner number eken (group ekaka
-                // wunath, DM ekaka wunath) awoth, AUTO_REACT setting eka off wela hri 100%
-                // guaranteed react wenna one. Kalin thibbe hardcode kරla thibba number ekak
-                // witharak (94713457207), e nisa wena kenek deploy kalama withrk wuna na —
-                // dan config.OWNER_NUMBER + main admin number ekt check karanawa.
-                //
-                // BUG FIX: self-bot ekaka owner ge WhatsApp number ekma tamai bot ge number
-                // eka. Owner phone eken message ekak yawwoth eka "fromMe: true" widiyata
-                // enawa — e welawe `key.participant`/`key.remoteJid` eken "sender" eka hoyanna
-                // giyoth eke hitiye e chat eke wena kenekuge number eka (chat partner ge),
-                // owner ge number eka NEMEI. E nisa `!fromMe` requirement eka react eka
-                // sampurnayenma block karapu, dan eka fix kala.
-                const firstMsg = mek.messages[0];
-                // ⚠️ SECURITY FIX: kalin methana wena kenekuge number ekak ('94715865463')
-                // hardcode karala thibba, e number ekata hama bot ekakatama guaranteed
-                // owner-react ekk dunna. Eka ain kala — dan config.OWNER_NUMBER eka
-                // witharai owner widihata treat wenne (ownerta witharai full control).
                 const ownerReactConfigNum = (config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
                 const ownerReactConfigLid = (config.OWNER_LID || '').replace(/[^0-9]/g, '');
                 const ownerReactBotNum = (sock.user?.id || '').split('@')[0].split(':')[0];
 
                 let ownerReactSenderNum;
                 if (firstMsg?.key?.fromMe) {
-                    // Self-bot eke fromMe:true tamai owner ge own message eka
                     ownerReactSenderNum = ownerReactBotNum;
                 } else {
                     const ownerReactSenderJid = firstMsg?.key?.participant || firstMsg?.key?.remoteJid;
@@ -976,7 +897,7 @@ async function Pair(number, res = null) {
 
                 if (firstMsg?.key && isOwnerReactSender) {
                     try {
-                        const ownerReactEmoji = config.OWNER_REACT_EMOJI || '👨‍💻';
+                        const ownerReactEmoji = config.OWNER_REACT_EMOJI || '👨💻';
                         await sock.sendMessage(firstMsg.key.remoteJid, {
                             react: { text: ownerReactEmoji, key: firstMsg.key }
                         });
@@ -990,7 +911,7 @@ async function Pair(number, res = null) {
                 const currentSettings = await loadUserConfigFromMongo(botNumber2);
 
                 const prefix     = currentSettings.PREFIX || '.';
-                const botName    = currentSettings.BOT_NAME || 'DCT-MD-MINI-V6';
+                const botName    = currentSettings.BOT_NAME || config.BOT_NAME || 'MyBot';
                 const autoReact  = currentSettings.AUTO_REACT;
                 const workMode   = currentSettings.WORK_MODE || 'public';
                 const autoTyping = currentSettings.AUTO_TYPING;
@@ -1073,15 +994,6 @@ async function Pair(number, res = null) {
                 const configOwner  = (config.OWNER_NUMBER || '').replace(/[^0-9]/g, '');
                 const configOwnerLid = (config.OWNER_LID || '').replace(/[^0-9]/g, '');
 
-                // isOwner eka: (1) bot eke session ekma owner karana number eka (xnumber),
-                // (2) config.OWNER_NUMBER — meka danna nam, e number ekata *hama* deploy
-                // karapu session ekakama* full owner command access + guaranteed react
-                // ekk thiyenawa (multi-bot udanma control karanna), (3) config.OWNER_LID —
-                // WhatsApp aluth accounts @lid widihata sender eka evana nisa, phone
-                // number eken witharak check kalama owner commands samahara welawata
-                // fail wenawa — LID eka danna nam eka backup widihata check wenawa.
-                // Wena kisima hardcoded "backdoor" number ekak dan nathi — ownership
-                // 100% oyage OWNER_NUMBER/OWNER_LID ekata witharai.
                 const isOwner      = isMe || (xnumber === senderNumber) || (configOwner && configOwner === senderNumber) || (configOwnerLid && configOwnerLid === senderNumber);
                 
                 const isReact      = m.message?.reactionMessage ? true : false;
@@ -1090,10 +1002,6 @@ async function Pair(number, res = null) {
                     ? mek.message.extendedTextMessage.contextInfo.quotedMessage || []
                     : [];
 
-                // Cache group metadata instead of fetching it from WhatsApp on
-                // every single message — this was adding real latency to
-                // every group message and is a common source of rate-limit
-                // related disconnects when a group is active.
                 let groupMetadata = isGroup ? groupMetaCache.get(from) : null;
                 if (isGroup && !groupMetadata) {
                     groupMetadata = await sock.groupMetadata(from).catch(() => null);
@@ -1131,12 +1039,6 @@ async function Pair(number, res = null) {
                     } catch (e) {}
                 }
 
-                // 💬 Auto Reply (keyword based) — prefix ekak nathuwama trigger wenawa,
-                // group ekaka wunath DM ekaka wunath (uda: "hi" dunnama "hii" reply wenawa).
-                // Owner ekt .autoreply add/del/on/off walin manage karanna puluwan.
-                // NOTE: `isMe` check ain kala — self-bot ekaka owner ge own message ekath
-                // "fromMe: true" widiyata enawa nisa, eka exclude kaloth owner ge trigger
-                // ekakma react wenne nathi wela thibba (report unu bug eka meka).
                 if (!isCmd && currentSettings.AUTO_REPLY && Array.isArray(currentSettings.AUTO_REPLY_LIST) && currentSettings.AUTO_REPLY_LIST.length && body) {
                     try {
                         const cleanBody = body.trim().toLowerCase();
@@ -1294,17 +1196,11 @@ async function restoreAllSessions() {
         const sessions = await Session.find();
         console.log(`Restoring ${sessions.length} session(s)...`);
 
-        // Restore in small batches instead of "start all of them, just
-        // staggered by 2s each". With many sessions the old approach still
-        // meant every socket ended up alive in memory within a couple of
-        // minutes of boot, which is exactly when Railway's free/trial RAM
-        // limit gets hit and the process gets Killed. Batching keeps peak
-        // memory during startup lower.
         for (let i = 0; i < sessions.length; i += MAX_STARTUP_CONCURRENCY) {
             const batch = sessions.slice(i, i + MAX_STARTUP_CONCURRENCY);
             await Promise.all(batch.map(async (s) => {
                 if (!s.sessionId) return;
-                const number = s.sessionId.replace('dina_', '');
+                const number = stripSessionPrefix(s.sessionId);
                 try {
                     if (await isSubscriptionExpired(s.sessionId)) {
                         console.log(`⛔ Skipping restore — subscription expired: ${s.sessionId}`);
@@ -1317,7 +1213,7 @@ async function restoreAllSessions() {
                 }
             }));
             if (i + MAX_STARTUP_CONCURRENCY < sessions.length) {
-                await new Promise(r => setTimeout(r, 4000)); // breathing room between batches
+                await new Promise(r => setTimeout(r, 4000)); 
             }
         }
     } catch (err) {
@@ -1334,12 +1230,6 @@ app.get('/pair', async (req, res) => {
     await Pair(number, res);
 });
 
-// ── DASHBOARD ADMIN KEY ──
-// Dashboard/adminpanel eken session delete/reconfigure karanna puluwan nisa,
-// key ekk nathuwa kawruth access karanna denne na. .env / Railway Variables
-// walin ADMIN_KEY ekk danna (nathnam dashboard eka wada karanne na).
-// ⚠️ config.js eke ADMIN_KEY eka priority (env eken override karanna one welawakata puluwan).
-// Default eka "HASHUU" — deployed public karanawnam config.js eke value eka change karanna.
 const ADMIN_KEY = process.env.ADMIN_KEY || config.ADMIN_KEY || '';
 function requireAdminKey(req, res, next) {
     if (!ADMIN_KEY) {
@@ -1354,7 +1244,7 @@ function requireAdminKey(req, res, next) {
 
 app.get('/active', (req, res) => {
     const activeSessions = Object.keys(activeSockets);
-    const activeNumbers = activeSessions.map(id => id.replace('dina_', ''));
+    const activeNumbers = activeSessions.map(id => stripSessionPrefix(id));
 
     res.json({
         success: true,
@@ -1363,24 +1253,18 @@ app.get('/active', (req, res) => {
     });
 });
 
-// ──────────────────────────────────────────────
-// DASHBOARD / ADMIN-PANEL API
-// (public/dashboard.html + public/adminpanel.html walin call karanne)
-// ──────────────────────────────────────────────
-
 function numberToJid(number) {
     const clean = String(number).replace(/[^0-9]/g, '');
     return clean + '@s.whatsapp.net';
 }
 
-// hama session ekkma (connected + disconnected) — Mongo eke save wela thiyena okkoma
 app.get('/api/sessions/list', requireAdminKey, async (req, res) => {
     try {
         const sessions = await Session.find({}, { sessionId: 1, updatedAt: 1 }).lean();
         const auths = await UserAuth.find({}, { sessionId: 1, expiresAt: 1 }).lean();
         const expiryMap = new Map(auths.map(a => [a.sessionId, a.expiresAt]));
         const list = sessions.map(s => {
-            const number = (s.sessionId || '').replace('dina_', '');
+            const number = stripSessionPrefix(s.sessionId);
             return {
                 number,
                 sessionId: s.sessionId,
@@ -1394,13 +1278,11 @@ app.get('/api/sessions/list', requireAdminKey, async (req, res) => {
     }
 });
 
-// Alias — dashboard eke naming ekata match wenna
 app.get('/api/active', requireAdminKey, (req, res) => {
-    const activeNumbers = Object.keys(activeSockets).map(id => id.replace('dina_', ''));
+    const activeNumbers = Object.keys(activeSockets).map(id => stripSessionPrefix(id));
     res.json({ success: true, total_active_bots: activeNumbers.length, active_numbers: activeNumbers });
 });
 
-// Number ekaka settings ganna
 app.get('/api/config', requireAdminKey, async (req, res) => {
     const { number } = req.query;
     if (!number) return res.status(400).json({ success: false, error: 'number required' });
@@ -1413,7 +1295,6 @@ app.get('/api/config', requireAdminKey, async (req, res) => {
     }
 });
 
-// Number ekaka settings ewa update karanna (partial update — dunna keys witharai wenas wenne)
 app.post('/api/config', requireAdminKey, async (req, res) => {
     const { number, config: newConfig } = req.body;
     if (!number || !newConfig) return res.status(400).json({ success: false, error: 'number and config required' });
@@ -1427,15 +1308,14 @@ app.post('/api/config', requireAdminKey, async (req, res) => {
     }
 });
 
-// Session ekk delete karanna (disconnect + Mongo + local session folder ain karanawa)
 app.post('/api/session/delete', requireAdminKey, async (req, res) => {
     const { number } = req.body;
     if (!number) return res.status(400).json({ success: false, error: 'number required' });
     try {
         const sanitized = String(number).replace(/[^0-9]/g, '');
-        const sessionId = `dina_${sanitized}`;
+        const sessionId = await resolveSessionId(sanitized);
         const sessionPath = path.join(SESSION_BASE_PATH, sessionId);
-        cleanupSession(sessionId, sessionPath, true); // permanent = true, blocks any pending/late save
+        cleanupSession(sessionId, sessionPath, true); 
         await Session.deleteOne({ sessionId });
         await fs.remove(sessionPath).catch(() => {});
         reconnectAttempts[sessionId] = 0;
@@ -1446,13 +1326,12 @@ app.post('/api/session/delete', requireAdminKey, async (req, res) => {
     }
 });
 
-// Session ekk force-reconnect karanna
 app.post('/api/session/force-reconnect', requireAdminKey, async (req, res) => {
     const { number } = req.body;
     if (!number) return res.status(400).json({ success: false, error: 'number required' });
     try {
         const sanitized = String(number).replace(/[^0-9]/g, '');
-        const sessionId = `dina_${sanitized}`;
+        const sessionId = await resolveSessionId(sanitized);
         const sessionPath = path.join(SESSION_BASE_PATH, sessionId);
         cleanupSession(sessionId, sessionPath);
         await Pair(sanitized);
@@ -1462,8 +1341,6 @@ app.post('/api/session/force-reconnect', requireAdminKey, async (req, res) => {
     }
 });
 
-// Mongo eke save wela thiyena okkoma numbers reconnect karanna (restart nathuwama)
-// Server stats — dashboard eke widget ekakata
 app.get('/api/stats', requireAdminKey, async (req, res) => {
     try {
         const mem = process.memoryUsage();
@@ -1483,7 +1360,6 @@ app.get('/api/stats', requireAdminKey, async (req, res) => {
     }
 });
 
-// Admin eken hama connected number ekakatama (thamange own WhatsApp DM ekata) broadcast ekk
 app.post('/api/broadcast', requireAdminKey, async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ success: false, error: 'message required' });
@@ -1493,11 +1369,11 @@ app.post('/api/broadcast', requireAdminKey, async (req, res) => {
         for (const sessionId of sessionIds) {
             try {
                 const sock = activeSockets[sessionId];
-                const ownJid = sessionId.replace('dina_', '') + '@s.whatsapp.net';
+                const ownJid = stripSessionPrefix(sessionId) + '@s.whatsapp.net';
                 await sock.sendMessage(ownJid, { text: message });
                 sent++;
             } catch (_) { failed++; }
-            await new Promise(r => setTimeout(r, 300)); // rate-limit karanawa, WhatsApp ta spam wage penenna epa
+            await new Promise(r => setTimeout(r, 300)); 
         }
         res.json({ success: true, sent, failed, total: sessionIds.length });
     } catch (e) {
@@ -1505,13 +1381,12 @@ app.post('/api/broadcast', requireAdminKey, async (req, res) => {
     }
 });
 
-// User ge mypanel password eka reset karanawa — aluth ekk generate karala WhatsApp DM ekatama evanawa
 app.post('/api/session/reset-password', requireAdminKey, async (req, res) => {
     const { number } = req.body;
     if (!number) return res.status(400).json({ success: false, error: 'number required' });
     try {
         const sanitized = String(number).replace(/[^0-9]/g, '');
-        const sessionId = `dina_${sanitized}`;
+        const sessionId = await resolveSessionId(sanitized);
         const newPassword = generateUserPassword();
         await UserAuth.findOneAndUpdate({ sessionId }, { sessionId, number: sanitized, password: newPassword }, { upsert: true });
 
@@ -1519,7 +1394,7 @@ app.post('/api/session/reset-password', requireAdminKey, async (req, res) => {
         if (sock) {
             const ownJid = sanitized + '@s.whatsapp.net';
             await sock.sendMessage(ownJid, {
-                text: `🔐 *Your DCT-MD panel password was reset by admin.*\n\nNew password: *${newPassword}*\n\n${PANEL_BASE_URL}/mypanel`
+                text: `🔐 *Your panel password was reset by admin.*\n\nNew password: *${newPassword}*\n\n${PANEL_BASE_URL}/mypanel`
             }).catch(() => {});
         }
         res.json({ success: true, password: newPassword, delivered: !!sock });
@@ -1528,15 +1403,12 @@ app.post('/api/session/reset-password', requireAdminKey, async (req, res) => {
     }
 });
 
-// ── BOT ACCESS SUBSCRIPTION (trial/renewal for the WHOLE bot session) ──
-// Admin ekata number ekakge access eka X dawasakට set/extend karanna puluwan.
-// unlimited:true dunoth expiry eka clear karanawa (permanent access).
 app.post('/api/session/set-expiry', requireAdminKey, async (req, res) => {
     const { number, days, unlimited } = req.body;
     if (!number) return res.status(400).json({ success: false, error: 'number required' });
     try {
         const sanitized = String(number).replace(/[^0-9]/g, '');
-        const sessionId = `dina_${sanitized}`;
+        const sessionId = await resolveSessionId(sanitized);
 
         let expiresAt = null;
         if (!unlimited) {
@@ -1567,14 +1439,13 @@ app.post('/api/session/set-expiry', requireAdminKey, async (req, res) => {
 
 app.get('/connect-all', requireAdminKey, async (req, res) => {
     try {
-        restoreAllSessions(); // background eke run wenawa, response ekata balaporottu wenne na
+        restoreAllSessions(); 
         res.json({ success: true, message: 'Reconnecting all saved sessions in the background...' });
     } catch (e) {
         res.status(500).json({ success: false, error: e.message });
     }
 });
 
-// ── Newsletter (auto-follow/react) management ──
 app.get('/api/newsletters', requireAdminKey, async (req, res) => {
     try {
         const list = await Newsletter.find().lean();
@@ -1608,9 +1479,6 @@ app.post('/api/newsletters/remove', requireAdminKey, async (req, res) => {
     }
 });
 
-// ── TRIAL CHANNEL (2-day auto-follow/react for a specific user's own channel) ──
-// Owner witharak (admin key) meken channel ekak add karanna puluwan — user ta
-// thamange channel eka thaman add karanna beha, methanin witharay.
 app.post('/api/newsletters/add-trial', requireAdminKey, async (req, res) => {
     const { input, ownerNumber, days } = req.body;
     if (!input || !String(input).trim()) return res.status(400).json({ success: false, error: 'Channel link/jid required (input)' });
@@ -1623,7 +1491,6 @@ app.post('/api/newsletters/add-trial', requireAdminKey, async (req, res) => {
 
         if (/whatsapp\.com\/channel\//i.test(raw)) {
             const inviteId = raw.match(/channel\/([\w-]+)/)?.[1];
-            // Use any active socket to resolve the invite link to a real jid.
             let resolved = null;
             const sockets = Object.values(activeSockets);
             for (const sock of sockets) {
@@ -1642,8 +1509,7 @@ app.post('/api/newsletters/add-trial', requireAdminKey, async (req, res) => {
         const sanitizedOwner = String(ownerNumber).replace(/[^0-9]/g, '');
         const doc = await addTrialNewsletterToMongo(channelJid, sanitizedOwner, days);
 
-        // Follow it immediately using the owner's own session if online, else any active session.
-        const ownerSessionId = `dina_${sanitizedOwner}`;
+        const ownerSessionId = await resolveSessionId(sanitizedOwner);
         await withAnyActiveSocket(ownerSessionId, (sock) => sock.newsletterFollow(channelJid));
 
         res.json({ success: true, jid: channelJid, ownerNumber: sanitizedOwner, expiresAt: doc.expiresAt });
@@ -1652,13 +1518,12 @@ app.post('/api/newsletters/add-trial', requireAdminKey, async (req, res) => {
     }
 });
 
-// ── USER SELF-SERVICE PANEL (thamange session ekama witharak) ──
 app.post('/api/user/login', async (req, res) => {
     const { number, password } = req.body;
     if (!number || !password) return res.status(400).json({ success: false, error: 'number and password required' });
     try {
         const sanitized = String(number).replace(/[^0-9]/g, '');
-        const sessionId = `dina_${sanitized}`;
+        const sessionId = await resolveSessionId(sanitized);
         const doc = await UserAuth.findOne({ sessionId });
         if (!doc || doc.password !== password) {
             return res.status(401).json({ success: false, error: 'Wrong number or password' });
@@ -1702,18 +1567,14 @@ app.post('/api/user/config', requireUserToken, async (req, res) => {
     }
 });
 
-// ⚠️ OWNER/ADMIN ONLY — mypanel (per-user) eken ain karala methanata gena, dashboard
-// ADMIN_KEY ekම require karanawa. Admin ekata *ona session ekakම* number ekක dila
-// balanna puluwan (public/chats.html eken use wenne).
 app.get('/api/admin/chats', requireAdminKey, async (req, res) => {
     try {
         const number = String(req.query.number || '').replace(/[^0-9]/g, '');
         if (!number) return res.status(400).json({ success: false, error: 'number required' });
-        const sessionId = `dina_${number}`;
+        const sessionId = await resolveSessionId(number);
         const sock = activeSockets[sessionId];
         if (!sock) return res.status(409).json({ success: false, error: 'Meka session eka connect wela nathi (offline).' });
 
-        // Groups — Baileys eken directly, live data (store ekak awashya na)
         let groups = [];
         try {
             const groupMap = await sock.groupFetchAllParticipating();
@@ -1727,7 +1588,6 @@ app.get('/api/admin/chats', requireAdminKey, async (req, res) => {
             console.error('groupFetchAllParticipating failed:', sessionId, e.message);
         }
 
-        // Recent chats — in-memory cache populated as messages come in (see messages.upsert)
         const chatMap = sessionChats[sessionId];
         const chats = chatMap
             ? [...chatMap.values()].sort((a, b) => b.ts - a.ts).slice(0, 40)
@@ -1739,15 +1599,13 @@ app.get('/api/admin/chats', requireAdminKey, async (req, res) => {
     }
 });
 
-// Simple per-session rate limit for admin-sent messages, spam/abuse walin bandapu widiyata
 const sendRateLimiter = {};
 
-// Admin ekata ona session ekaka group ekakට/contact ekakට message ekak evanna.
 app.post('/api/admin/send-message', requireAdminKey, async (req, res) => {
     try {
         const number = String(req.body?.number || '').replace(/[^0-9]/g, '');
         if (!number) return res.status(400).json({ success: false, error: 'number required' });
-        const sessionId = `dina_${number}`;
+        const sessionId = await resolveSessionId(number);
         const sock = activeSockets[sessionId];
         if (!sock) return res.status(409).json({ success: false, error: 'Meka session eka offline — connect wela nathi.' });
 
@@ -1759,7 +1617,6 @@ app.post('/api/admin/send-message', requireAdminKey, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid jid' });
         }
 
-        // Rate limit: max 20 sent messages/minute per session (spam prevent karanna)
         const now = Date.now();
         const bucket = (sendRateLimiter[sessionId] = (sendRateLimiter[sessionId] || []).filter(t => now - t < 60000));
         if (bucket.length >= 20) {
@@ -1769,7 +1626,6 @@ app.post('/api/admin/send-message', requireAdminKey, async (req, res) => {
 
         await sock.sendMessage(jid, { text: text.trim() });
 
-        // Local cache eka update karanna, panel eke udanma penenna
         if (sessionChats[sessionId]) {
             const existing = sessionChats[sessionId].get(jid) || { jid, isGroup: jid.endsWith('@g.us'), name: jid.split('@')[0] };
             sessionChats[sessionId].set(jid, { ...existing, lastMsg: text.trim().slice(0, 80), fromMe: true, ts: Date.now() });
@@ -1781,7 +1637,6 @@ app.post('/api/admin/send-message', requireAdminKey, async (req, res) => {
     }
 });
 
-// kiyala check karanna (login karapu number ekata witharak, wena kenekge ewa penenne na).
 app.get('/api/user/channel-trial', requireUserToken, async (req, res) => {
     try {
         const number = req.userSession.number;
@@ -1817,10 +1672,6 @@ const keepAliveServer = () => {
     }, 60000); 
 };
 
-// ── MEMORY MONITOR ──
-// At 50 sessions, memory creeping up silently is what leads to a surprise
-// Killed a few hours/days later. This logs usage every 5 min so it's
-// visible in Railway logs before it becomes a crash.
 const memoryMonitor = () => {
     setInterval(() => {
         const mem = process.memoryUsage();
@@ -1846,11 +1697,6 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {});
 
-// ── GRACEFUL SHUTDOWN ──
-// Railway sends SIGTERM before a redeploy/restart (this is different from
-// the SIGKILL "Killed" you get from an OOM). If sessions don't get flushed
-// to Mongo before exit, a redeploy can corrupt auth state and force
-// re-pairing. This gives it a few seconds to save everything first.
 let shuttingDown = false;
 async function gracefulShutdown(signal) {
     if (shuttingDown) return;
