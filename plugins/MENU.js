@@ -2,7 +2,7 @@ const config = require('../config');
 const { cmd, commands } = require('../command');
 const moment = require('moment-timezone');
 
-// Random images list
+// Random images list (ඔයා දුන්න පින්තූර ටික)
 const menuImages = [
     'https://res.cloudinary.com/dqlh378fb/image/upload/v1783328021/zanta_media_uploads/tnuazopka24oahpvh3mc.jpg',
     'https://res.cloudinary.com/dqlh378fb/image/upload/v1783327996/zanta_media_uploads/vfq2mrf2hwkzhjerc3zz.jpg',
@@ -14,48 +14,48 @@ const menuImages = [
     'https://res.cloudinary.com/dqlh378fb/image/upload/v1783332958/zanta_media_uploads/yxtvp8zwoju8xsvghzr7.jpg'
 ];
 
-// Helper to get runtime format
+// Helper to get runtime format (Small format)
 function formatUptime(seconds) {
     seconds = Number(seconds);
     var d = Math.floor(seconds / (3600 * 24));
     var h = Math.floor(seconds % (3600 * 24) / 3600);
     var m = Math.floor(seconds % 3600 / 60);
-    var s = Math.floor(seconds % 60);
-    let dDisplay = d > 0 ? `${d}d ` : "";
-    let hDisplay = h > 0 ? `${h}h ` : "";
-    let mDisplay = m > 0 ? `${m}m ` : "";
-    let sDisplay = s > 0 ? `${s}s` : "0s";
-    return dDisplay + hDisplay + mDisplay + sDisplay;
+    let dDisplay = d > 0 ? `${d}ᴅ ` : "";
+    let hDisplay = h > 0 ? `${h}ʜ ` : "";
+    let mDisplay = m > 0 ? `${m}ᴍ` : "0ᴍ";
+    return dDisplay + hDisplay + mDisplay;
 }
 
-// ── ALL COMMANDS, GROUPED INTO CATEGORIES ──
+// ── NEW CLEAN CATEGORIES (No heavy big-bot cmds) ──
 const categories = {
-    "1": { title: "📥 DOWNLOAD MENU", items: ["tiktok", "fb", "song", "video", "ig", "yt", "ysprank", "sublk", "twitter", "xnxx", "xndl", "apk", "cinesubz", "cinesubz2", "play", "paper", "pdl", "gitclone", "movie", "thenkiri", "cartoon", "cinetv", "lyrics", "ytchannel", "ttsearch", "pinterest", "sitecode", "getdp", "imgurl", "steal"] },
-    "2": { title: "🧠 AI COMMANDS", items: ["ai", "athal", "aiimg2", "translate", "img", "meta", "sticker", "toimg", "toaudio", "toptt", "anime0", "anime", "manga", "waifupic"] },
-    "3": { title: "👥 GROUP MANAGE", items: ["kick", "kick2", "add", "del", "invite", "warn", "jid", "forward", "tagall", "setpp", "admins", "promote", "demote", "unmute", "open", "close", "mute", "revoke", "link", "grouplink", "setsubject", "setdesc", "groupinfo", "ginfo", "gstatus", "online", "poll", "vote", "presults", "pclose", "antilink"] },
-    "4": { title: "⚙️ ADMIN MENU", items: ["save", "listsave", "broadcast", "block", "unblock", "blockall", "pp", "restart", "shutdown", "eval", "setvar", "getvar", "grouplist", "leave", "setname", "setbio", "botinfo", "clearchat", "getcontact", "anticall", "kickall", "settings", "mode", "autoreact", "autostatus", "autotyping", "antidelete", "welcome", "goodbye", "autoblock", "statusreply", "setprefix", "setlogo", "setalivemsg", "setwelcomemsg", "setgoodbyemsg", "setstatusreply", "blacklist", "areply"] },
-    "5": { title: "🔧 TOOLS & EDITS", items: ["say", "repeat", "upper", "lower", "reverse", "length", "count", "b64enc", "b64dec", "binary", "hex", "md5", "sha1", "sha256", "sha384", "sha512", "md4", "ripemd", "hmac", "crc32", "urlenc", "urldec", "escape", "unescape", "jsonparse", "jsonstring", "base64url", "hexdump", "binarydump", "ascii", "charcode", "unicode", "random", "mock", "clap", "vowel", "leet", "fliptext", "space", "zalgo", "fancy", "lenny", "shrug", "removebg", "enhance", "colour", "timer", "remind", "note", "getnote", "delnote", "afk", "titlecase", "camelcase", "snakecase", "kebabcase", "removeemoji", "removenum", "removespace", "dupline", "sortline", "revline", "swapcase", "strikethru", "underline", "wide", "smallcaps", "bubble", "square", "mirror", "zigzag", "usee", "qr", "short", "password"] },
-    "6": { title: "👑 OWNER AREA", items: ["owner", "system", "report", "whois", "srepo"] },
-    "7": { title: "📁 OTHER CMDS", items: ["weather", "quran", "bible", "sqrt", "pow", "sin", "cos", "tan", "log", "ln", "abs", "ceil", "floor", "round", "gcd", "lcm", "prime", "fib", "avg", "sum", "min", "max", "epoch", "isotime", "utc", "timezone", "timezoneconv", "weekday", "month", "year", "leap", "daynum", "weeknum", "addday", "subday", "diffday", "timestamp", "countdown", "age", "daylight", "millis", "seconds"] },
-    "8": { title: "🎵 SONG & MUSIC", items: ["song", "music", "mp3", "audio", "lyrics", "playlist"] },
-    "9": { title: "🖼️ AI IMAGE MENU", items: ["dalle", "pixabay", "picsum", "flickr", "dog", "cat", "bingimg"] },
-    "10": { title: "🎬 TV SERIES & MOVIES", items: ["cinesubz", "cinesubz2", "tv", "movielk", "moviepro", "sinhalasub", "kdrama", "sublk", "hanime", "cinesend", "bais"] }
+    "1": { title: "📥 ᴅᴏᴡɴʟᴏᴀᴅꜱ", items: ["song", "video", "tiktok", "facebook", "insta", "gdrive", "mediafire"] },
+    "2": { title: "🧠 ᴀɪ ꜰᴇᴀᴛᴜʀᴇꜱ", items: ["ai", "chatgpt", "gemini", "ask", "imagine"] },
+    "3": { title: "👥 ɢʀᴏᴜᴘ ᴍᴇɴᴜ", items: ["kick", "add", "promote", "demote", "tagall", "hidetag", "link"] },
+    "4": { title: "⚙️ ᴀᴅᴍɪɴ ᴏɴʟʏ", items: ["mute", "unmute", "lock", "unlock", "setname", "setdesc"] },
+    "5": { title: "🔧 ᴛᴏᴏʟꜱ ᴍᴇɴᴜ", items: ["sticker", "styletext", "qr", "translate", "length", "weather"] },
+    "6": { title: "👑 ᴏᴡɴᴇʀ ᴢᴏɴᴇ", items: ["restart", "block", "unblock", "setprefix", "eval", "broadcast"] },
+    "7": { title: "🧩 ꜰᴜɴ & ɢᴀᴍᴇꜱ", items: ["ship", "love", "slap", "hug", "hack", "truth", "dare", "friend"] },
+    "8": { title: "🖼️ ᴡᴀʟʟᴘᴀᴘᴇʀꜱ", items: ["pinterest", "wallpaper", "animepic", "dog", "cat"] },
+    "9": { title: "🎬 ᴍᴏᴠɪᴇ ꜱᴇᴀʀᴄʜ", items: ["movie", "imdb", "series", "sinhalasub"] },
+    "10": { title: "🔊 ᴠᴏɪᴄᴇ ᴍᴇɴᴜ", items: ["tts", "voice", "sing", "audio"] }
 };
 
 function buildCategoryText(key, prefix) {
     const cat = categories[key];
-    if (!cat) return "❌ Invalid Option";
-    const lines = cat.items.map(c => ` ➲ ${prefix}${c}`).join("\n");
-    return `
-╭───❖《 ${cat.title} 》❖───
+    if (!cat) return "❌ ɪɴᴠᴀʟɪᴅ ᴏᴘᴛɪᴏɴ";
+    const lines = cat.items.map(c => ` ◦ ${prefix}${c}`).join("\n");
+    return `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+┊ ${cat.title}
+╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ${lines}
-╰───────────────────`;
+
+> ꜱᴀᴅᴇᴡ ᴍɪɴɪ ᴠ1.0 🎐`;
 }
 
 cmd({
     pattern: "menu",
-    react: "🚀",
-    desc: "Interactive Bot Menu",
+    react: "🫧",
+    desc: "Aesthetic Mini Menu",
     category: "main",
     filename: __filename
 },
@@ -68,43 +68,26 @@ async (conn, mek, m, { from, pushname, prefix }) => {
         const uptime = formatUptime(process.uptime());
         const totalCmds = commands.length;
         const randomImg = menuImages[Math.floor(Math.random() * menuImages.length)];
-        const botName = config.BOT_NAME || "SADEW-MD-MINI";
-        const mode = config.MODE || "public";
+        const mode = config.MODE || "ᴘᴜʙʟɪᴄ";
 
-        const menuText = `┌──⟡ 🤖  ⟡ ꜱ ᴀ ᴅ ᴇ ᴡ - ᴍ ɪ ɴ ɪ ⟡  ⟡──
+        // 🟢 AESTHETIC SMALL-CAPS MENU DESIGN 🟢
+        const menuText = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+┊ 🎐 ꜱᴀᴅᴇᴡ ᴍɪɴɪ ᴍᴅ 🎐
 ┊
-┠⪼✿ ✦ 👤 𝙽𝙰𝙼𝙴   : ${pushname}
-┠⪼✿ ✦ 🔖 𝙼𝙾𝙳𝙴   : ${mode}
-┠⪼✿ ✦ 📅 𝙳𝙰𝚃𝙴   : ${slDate}
-┠⪼✿ ✦ ⏰ 𝚃𝙸𝙼𝙴   : ${slTimeNow}
-┠⪼✿ ✦ ⚡ 𝚄𝙿𝚃𝙸𝙼𝙴 : ${uptime}
-┠⪼✿ ✦ 📦 𝙿𝙻𝚄𝙶𝙸𝙽𝚂: 𝙲𝙼𝙳 = ${totalCmds}
-┠⪼✿ ✦ 🔰 𝙿𝚁𝙴𝙵𝙸𝚇 : ${prefix}
-┊
-└──⟡ ━━━━━━━━━━━━━━━━ ⟡
-┏━━━━『 𝙲𝙰𝚃𝙴𝙶𝙾𝚁𝙸𝙴𝚂 』━━━━━
-┣⪼ ❖ 1.  📥 𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙼𝙴𝙽𝚄
-┣⪼ ❖ 2.  🧠 𝙰𝙸 𝙲𝙾𝙼𝙼𝙰𝙽𝙳𝚂
-┣⪼ ❖ 3.  👥 𝙶𝚁𝙾𝚄𝙿 𝙼𝙰𝙽𝙰𝙶𝙴
-┣⪼ ❖ 4.  ⚙️ 𝙰𝙳𝙼𝙸𝙽 𝙼𝙴𝙽𝚄
-┣⪼ ❖ 5.  🔧 𝚃𝙾𝙾𝙻𝚂 & 𝙴𝙳𝙸𝚃𝚂
-┣⪼ ❖ 6.  👑 𝙾𝚆𝙽𝙴𝚁 𝙰𝚁𝙴𝙰
-┣⪼ ❖ 7.  📁 𝙾𝚃𝙷𝙴𝚁 𝙲𝙼𝙳𝚂
-┣⪼ ❖ 8.  🎵 𝚂𝙾𝙽𝙶 & 𝙼𝚄𝚂𝙸𝙲
-┣⪼ ❖ 9.  🖼️ 𝙰𝙸 𝙸𝙼𝙰𝙶𝙴 𝙼𝙴𝙽𝚄
-┣⪼ ❖ 10. 🎬 𝚃𝚅 𝚂𝙴𝚁𝙸𝙴𝚂 & 𝙼𝙾𝚅𝙸𝙴𝚂
-┗━━━━━━━━━━━━━━━━━━━━━━━━━
-⊱ ─────── { 𑁍 } ─────── ⊰
-╰┈⪼ 𝚁𝙴𝙿𝙻𝚈 𝚆𝙸𝚃𝙷 𝙰 𝙽𝚄𝙼𝙱𝙴𝚁 (1-10) 𝙾𝚁 𝚃𝙰𝙿 𝙰 𝙱𝚄𝚃𝚃𝙾𝙽 ⪻
-⊱ ─────── { 𑁍 } ─────── ⊰
-╰┈⪼ 𝙿𝙾𝚆𝙴𝚁𝙴𝙳 𝙱𝚈🔮 ⟡ ꜱ ᴀ ᴅ ᴇ ᴡ - ᴍ ɪ ɴ ɪ ⟡ 🔮⪻
-⊱ ─────── { 𑁍 } ─────── ⊰`;
+┊ 🪽 ᴜꜱᴇʀ : ${pushname}
+┊ ☁️ ᴍᴏᴅᴇ : ${mode}
+┊ ❄️ ᴅᴀᴛᴇ : ${slDate}
+┊ ⏱️ ᴛɪᴍᴇ : ${slTimeNow}
+┊ ⚡ ᴜᴘᴛɪᴍᴇ : ${uptime}
+┊ 🧩 ᴄᴍᴅꜱ : ${totalCmds}
+╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 
-        // 🟢 NATIVE BUTTON GENERATOR 🟢
-        // @dnuzi/baileys වලට Support කරන විදිහට Type 1 Buttons 10ම හදනවා.
+> ᴛᴀᴘ ᴀ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ ᴛᴏ ᴠɪᴇᴡ ᴄᴏᴍᴍᴀɴᴅꜱ ⬇️`;
+
+        // Generate Type 1 Buttons for all 10 categories (Supported by @dnuzi)
         const menuButtons = Object.entries(categories).map(([num, cat]) => {
             return {
-                buttonId: num, // Button ID එක Category අංකයමයි (1, 2, 3...)
+                buttonId: num, 
                 buttonText: { displayText: cat.title },
                 type: 1
             };
@@ -113,7 +96,7 @@ async (conn, mek, m, { from, pushname, prefix }) => {
         const buttonMessage = {
             image: { url: randomImg },
             caption: menuText,
-            footer: "🔮 ⟡ ꜱ ᴀ ᴅ ᴇ ᴡ - ᴍ ɪ ɴ ɪ ⟡ 🔮",
+            footer: "🌸 ꜱ ᴀ ᴅ ᴇ ᴡ - ᴍ ɪ ɴ ɪ 🌸",
             buttons: menuButtons,
             headerType: 4,
             contextInfo: {
@@ -121,7 +104,7 @@ async (conn, mek, m, { from, pushname, prefix }) => {
                 isForwarded: true,
                 forwardedNewsletterMessageInfo: {
                     newsletterJid: "120363395674230271@newsletter",
-                    newsletterName: "SADEW - MD - MINI",
+                    newsletterName: "ꜱ ᴀ ᴅ ᴇ ᴡ - ᴍ ɪ ɴ ɪ",
                     serverMessageId: 1
                 }
             }
@@ -135,7 +118,6 @@ async (conn, mek, m, { from, pushname, prefix }) => {
             const replyMsg = messages[0];
             if (!replyMsg.message) return;
 
-            // Check if it's a Button Reply or a Text Reply
             let text = "";
             if (replyMsg.message.buttonsResponseMessage) {
                 text = replyMsg.message.buttonsResponseMessage.selectedButtonId;
@@ -149,7 +131,6 @@ async (conn, mek, m, { from, pushname, prefix }) => {
                             replyMsg.message.buttonsResponseMessage?.contextInfo?.stanzaId ||
                             replyMsg.message.templateButtonReplyMessage?.contextInfo?.stanzaId;
 
-            // Optional: Message ID එකටම Reply කරලා තියෙනවද බලන්න
             if (replyId !== messageID) return;
 
             const categoryNum = (text || "").trim();
