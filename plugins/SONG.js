@@ -48,11 +48,12 @@ async (conn, mek, m, {
 > *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // 🟢 APIs 3ක් පාවිච්චි කරනවා (එකක් වැඩ නැත්තන් අනිත් එකෙන් auto ගන්න)
+        // 🟢 APIs List (වැඩ කරන හොඳම APIs ටික මුලට දාලා තියෙන්නේ)
         const apis = [
-            `https://new-api-yt.vercel.app/api/mp3?url=${encodeURIComponent(data.url)}`,
             `https://api.giftedtech.my.id/api/download/ytmp3?url=${encodeURIComponent(data.url)}&apikey=gifted`,
-            `https://itzpire.com/download/youtube?url=${encodeURIComponent(data.url)}`
+            `https://itzpire.com/download/youtube?url=${encodeURIComponent(data.url)}`,
+            `https://www.dark-yasiya-api.site/download/ytmp3?url=${encodeURIComponent(data.url)}`,
+            `https://new-api-yt.vercel.app/api/mp3?url=${encodeURIComponent(data.url)}` // ඔයාගේ පරණ API එක අන්තිමටම දැම්මා
         ];
 
         let audioUrl = null;
@@ -61,31 +62,44 @@ async (conn, mek, m, {
             try {
                 const res = await axios.get(api, { timeout: 10000 });
                 const d = res.data;
+                let tempUrl = null;
 
-                // 1. new-api-yt API එක check කිරීම
-                if (d?.download) { 
-                    audioUrl = d.download; break; 
-                }
-                // 2. giftedtech API එක check කිරීම
-                if (d?.result?.download_url) { 
-                    audioUrl = d.result.download_url; break; 
-                }
-                // 3. itzpire API එක check කිරීම
-                if (d?.data?.download?.mp3 || d?.data?.audio || d?.data?.url) { 
-                    audioUrl = d.data.download?.mp3 || d.data.audio || d.data.url; break; 
+                if (d?.result?.download_url) tempUrl = d.result.download_url; // giftedtech / dark-yasiya
+                else if (d?.data?.download?.mp3) tempUrl = d.data.download.mp3; // itzpire
+                else if (d?.data?.audio) tempUrl = d.data.audio; // itzpire fallback
+                else if (d?.download) tempUrl = d.download; // new-api-yt
+
+                if (tempUrl) {
+                    // 🛑 ERROR CHECK: WhatsApp එකට යවන්න කලින් File එක හිස්ද (0.0s ද) කියලා බලනවා!
+                    try {
+                        const check = await axios.head(tempUrl, { timeout: 5000 });
+                        const contentLength = check.headers['content-length'];
+                        
+                        // File එක 1000 Bytes (1KB) වලට වඩා අඩු නම් ඒක 0.0s (හිස්) සින්දුවක්.
+                        if (contentLength && parseInt(contentLength) < 1000) {
+                            console.log(`[Warning] API gave an empty file (${contentLength} bytes). Skipping...`);
+                            continue; // මේ ලින්ක් එක බොරු එකක්. ඊලඟ API එකට යනවා!
+                        }
+                    } catch (headErr) {
+                        // 404 Not Found ආවොත් හරි, Block කරලා නම් හරි මේ API එක skip කරනවා
+                        console.log(`[Warning] API URL is broken or blocked. Skipping...`);
+                        continue; 
+                    }
+
+                    // මේ හරියට ආවා කියන්නේ File එක 100% වැඩ. ඒක අරගන්නවා!
+                    audioUrl = tempUrl;
+                    break; 
                 }
             } catch (e) {
-                // මේ API එක අවුල් නම් ඊලඟ එක try කරනවා (Auto Fallback)
-                console.log(`API Fetch Error: ${api}`);
+                console.log(`[Warning] API is offline, trying next...`);
             }
         }
 
         if (!audioUrl) {
-            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (APIs ක්‍රියා විරහිතයි)*");
+            return reply("❌ *සින්දුව ඩවුන්ලෝඩ් කිරීමට නොහැකි විය. (APIs අවහිර කර ඇත)*");
         }
 
-        // 📥 File එකක් විදිහට Save නොකර කෙලින්ම URL එකෙන් යවනවා!
-        // මේකෙන් 0 Seconds අවුල එන්නෙත් නෑ, Heroku වල Memory පිරෙන්නෙත් නෑ.
+        // 📥 0.0s අවුල නැතුව සින්දුව කෙලින්ම යැවීම
         await conn.sendMessage(from, {
             audio: { url: audioUrl },
             mimetype: "audio/mpeg",
