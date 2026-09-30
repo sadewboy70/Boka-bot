@@ -3,6 +3,7 @@ const axios = require('axios');
 const yts = require('yt-search');
 const fs = require('fs');
 const path = require('path');
+const config = require('../config'); // config.js එක සම්බන්ධ කිරීම
 
 cmd({
     pattern: "song",
@@ -20,14 +21,17 @@ async (conn, mek, m, {
 
     try {
         if (!q) {
-            return reply("🎵 Give a song name or YouTube link.");
+            return reply("🎵 *කරුණාකර සින්දුවක නමක් හෝ YouTube ලින්ක් එකක් ලබා දෙන්න.*");
         }
 
-        // SEARCH SONG
+        // config.js එකෙන් බොට්ගේ නම ගැනීම
+        const botName = config.BOT_NAME || "SADEW-MINI";
+
+        // YOUTUBE SEARCH
         const search = await yts(q);
 
         if (!search || !search.videos || !search.videos.length) {
-            return reply("❌ Song not found.");
+            return reply("❌ *සින්දුව සොයා ගැනීමට නොහැකි විය.*");
         }
 
         const data = search.videos[0];
@@ -38,39 +42,36 @@ async (conn, mek, m, {
             caption:
 `╭━━〔 *🎵 𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗘𝗥 🎵* 〕━━⬣
 ┃
-┃ • *🎶 ${data.title}*
+┃ • *🎶 Title:* ${data.title}
 ┃ 
-┃ • *⏱ ${data.timestamp}*
+┃ • *⏱ Duration:* ${data.timestamp}
 ┃
-┃ • *👀 ${data.views} Views*
+┃ • *👀 Views:* ${data.views}
 ┃
 ┃ ✨ 𝗦𝗢𝗡𝗚 𝗗𝗢𝗪𝗡𝗟𝗢𝗔𝗗𝗜𝗡𝗚...
 ╰━━━━━━━━━━━━━━━━━━⬣
-*𝗖𝗢𝗡𝗡𝗘𝗖𝗧 𝗕𝗢𝗧 𝗙𝗥𝗘𝗘 🤍✨*
-*https://dct-freebot.pages.dev*
 
-> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ᴅᴄᴛ ꜰʀᴇᴇ ʙᴏᴛ*`
+> *ᴘᴏᴡᴇʀᴇᴅ ʙʏ ${botName}*`
         }, { quoted: mek });
 
-        // NEW API REQUEST URL
-        const apiUrl = `https://vajiraofc-apis.vercel.app/api/ytmp3?apikey=hashimdtech@gmail.com:vajira-97489&url=${encodeURIComponent(data.url)}&quality=256`;
+        // NEW API REQUEST URL (ඔයා දුන්න අලුත් API එක)
+        const apiUrl = `https://new-api-yt.vercel.app/api/mp3?url=${encodeURIComponent(data.url)}`;
 
         const response = await axios.get(apiUrl, { timeout: 15000 });
         let res = response.data;
 
-        // If response is a string, parse it to JSON object
         if (typeof res === "string") {
             res = JSON.parse(res);
         }
 
         // CHECK IF THE RESPONSE IS SUCCESSFUL
-        if (!res || res.success !== true || !res.data || !res.data.download || !res.data.download.url) {
+        if (!res || res.status !== "success" || !res.download) {
             console.log("Invalid API Response:", res);
-            return reply("❌ Failed to get download link from API.");
+            return reply("❌ *API දෝෂයක්. කරුණාකර පසුව උත්සාහ කරන්න.*");
         }
 
-        const audioUrl = res.data.download.url;
-        const fileName = res.data.download.filename || `${data.title}.mp3`;
+        const audioUrl = res.download;
+        const fileName = `${data.title}.mp3`;
 
         console.log("AUDIO DOWNLOAD URL =>", audioUrl);
 
@@ -78,15 +79,14 @@ async (conn, mek, m, {
         const filePath = path.join(__dirname, `song_${Date.now()}.mp3`);
 
         try {
-            // DOWNLOAD AUDIO USING BUFFER (SOMETIMES STREAMING GETS BLOCKED)
+            // 🛡️ PROXY DOWNLOAD METHOD (Buffer හරහා ඩවුන්ලෝඩ් කිරීම)
             const audioRes = await axios({
                 url: audioUrl,
                 method: "GET",
                 responseType: "arraybuffer",
                 headers: {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                    "Accept": "*/*",
-                    "Origin": "https://vajiraofc-apis.vercel.app"
+                    "Accept": "*/*"
                 },
                 timeout: 30000
             });
@@ -110,7 +110,7 @@ async (conn, mek, m, {
         } catch (downloadErr) {
             console.error("Audio Download/Send Error:", downloadErr);
             
-            // Try sending directly via URL if local downloading fails
+            // Local download එක ෆේල් වුණොත් විතරක් කෙලින්ම URL එකෙන් යවන්න ට්‍රයි කරනවා
             try {
                 await conn.sendMessage(from, {
                     audio: { url: audioUrl },
@@ -120,7 +120,7 @@ async (conn, mek, m, {
                 }, { quoted: mek });
             } catch (fallbackErr) {
                 console.error("Fallback Send Error:", fallbackErr);
-                reply("❌ Failed to download or send the audio file.");
+                reply("❌ *සින්දුව යැවීමට නොහැකි විය.*");
             }
 
             if (fs.existsSync(filePath)) {
@@ -130,6 +130,6 @@ async (conn, mek, m, {
 
     } catch (e) {
         console.error("Global Error:", e);
-        reply("❌ Download process failed.");
+        reply("❌ *දෝෂයක් ඇතිවිය. කරුණාකර නැවත උත්සාහ කරන්න.*");
     }
 });
