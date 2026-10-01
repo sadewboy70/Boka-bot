@@ -42,8 +42,14 @@ module.exports = {
     // Railway eke deployed app eke public URL eka (adminpanel/mypanel link WhatsApp
     // ekata evanna use wenne meka). Railway > Settings > Networking ekේ penena domain eka
     // https:// samaga methana danna (e.g. "https://dct-md-production.up.railway.app")
-    PANEL_BASE_URL: process.env.PANEL_BASE_URL || "https://dct-mini-server3-production.up.railway.app",
+    PANEL_BASE_URL: process.env.PANEL_BASE_URL || "no hosting",
 
     // /dashboard access karanna one password eka.
-    ADMIN_KEY: process.env.ADMIN_KEY || "HASHUU"
+     ADMIN_KEY: process.env.ADMIN_KEY || "HASHUU",
+
+    // ─── Google Drive API (DinkaMovies) ───
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
+    GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN || "",
+    MAX_MOVIE_MB: Number(process.env.MAX_MOVIE_MB) || 95,
 };
