@@ -5,7 +5,7 @@ const path = require('path');
 const config = require('../config');
 
 const API = "https://kavindu-download-web.vercel.app/api/dinkamovies/movie";
-const MAX_MB = Number(config.MAX_MOVIE_MB || 2000);
+const MAX_MB = Number(config.MAX_MOVIE_MB || 95); // WhatsApp safe limit
 const TMP_DIR = path.join(__dirname, '../tmp');
 const activeDownloads = new Set();
 
@@ -50,61 +50,26 @@ function getFileId(url) {
     return null;
 }
 
-// ── HTML එකෙන් confirm token එක extract කරනවා ──
-function extractConfirmToken(html) {
-    if (!html) return null;
-    // form action එකේ හෝ link එකේ confirm token එක හොයනවා
-    let m = html.match(/confirm=([0-9A-Za-z_-]+)/);
-    if (m) return m[1];
-    // hidden input field එකෙන්
-    m = html.match(/name="confirm"\s+value="([^"]+)"/);
-    if (m) return m[1];
-    m = html.match(/value="([^"]+)"\s+name="confirm"/);
-    if (m) return m[1];
-    return null;
-}
+// ── OAuth Access Token එක auto-renew කරන function එක ──
+let accessToken = null;
+let tokenExpiry = 0;
 
-// ── Google Drive warning page එක handle කරන function එක ──
-async function handleGDriveResponse(res, fileId, fileUrl) {
-    const contentType = res.headers['content-type'] || '';
+async function getAccessToken() {
+    if (accessToken && Date.now() < tokenExpiry) return accessToken;
     
-    // HTML page එකක් ආවොත් (warning page)
-    if (contentType.includes('text/html')) {
-        const html = await new Promise((resolve) => {
-            let data = '';
-            res.data.on('data', chunk => data += chunk);
-            res.data.on('end', () => resolve(data));
-            res.data.on('error', () => resolve(''));
-        });
-
-        // confirm token එක extract කරනවා
-        let token = extractConfirmToken(html);
-        
-        // token එක නැත්නම් 't' try කරනවා (files > 100MB සඳහා)
-        if (!token) token = 't';
-
-        console.log(`[GDrive] Confirmation page detected. Token: ${token}`);
-
-        // cookies save කරගන්නවා
-        const cookies = res.headers['set-cookie'] || [];
-        const cookieStr = cookies.map(c => c.split(';')[0]).join('; ');
-
-        // අලුත් URL එක හදනවා
-        const newUrl = `https://drive.google.com/uc?export=download&confirm=${token}&id=${fileId}`;
-
-        // අලුත් request එක යවනවා (cookies එක්කම)
-        return await axios.get(newUrl, {
-            responseType: 'stream',
-            timeout: 0,
-            maxRedirects: 10,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Cookie': cookieStr
-            }
-        });
-    }
-
-    return res;
+    const res = await axios.post('https://oauth2.googleapis.com/token', 
+        new URLSearchParams({
+            client_id: config.GOOGLE_CLIENT_ID,
+            client_secret: config.GOOGLE_CLIENT_SECRET,
+            refresh_token: config.GOOGLE_REFRESH_TOKEN,
+            grant_type: 'refresh_token'
+        }),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+    
+    accessToken = res.data.access_token;
+    tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000; // Expire වෙන්න 1 min කලින් renew කරනවා
+    return accessToken;
 }
 
 async function getDownloads(pageUrl) {
@@ -116,7 +81,7 @@ async function getDownloads(pageUrl) {
 cmd({
     pattern: "dink",
     alias: ["dinkamovie"],
-    desc: "DinkaMovies search + WhatsApp document downloader (GDrive fix)",
+    desc: "DinkaMovies search + WhatsApp document downloader (OAuth Fix)",
     category: "movies",
     react: "🎬",
     filename: __filename
@@ -158,31 +123,40 @@ async (conn, mek, m, { from, q, reply }) => {
 
                 // ── progress message එක ──
                 let msg = await conn.sendMessage(from, {
-                    text: `⏳ *Download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n${fileId ? '📂 *Source:* Google Drive' : ''}\n\n> ${botName}`
+                    text: `⏳ *Download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n${fileId ? '📂 *Source:* Google Drive (API)' : ''}\n\n> ${botName}`
                 }, { quoted: mek });
 
-                // ── Step 1: Initial request ──
-                let res = await axios.get(fileUrl, {
-                    responseType: 'stream',
-                    timeout: 0,
-                    maxRedirects: 10,
-                    headers: { 
-                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                    }
-                });
-
-                // ── Step 2: GDrive warning page එකක් නම් handle කරනවා ──
+                // ── Step 1: Download Logic (Google Drive API vs Direct) ──
+                let res;
                 if (fileId) {
-                    res = await handleGDriveResponse(res, fileId, fileUrl);
+                    // Google Drive API v3 එක පාවිච්චි කරලා download කරනවා (IP block bypass)
+                    const token = await getAccessToken();
+                    res = await axios.get(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                        responseType: 'stream',
+                        timeout: 0,
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                } else {
+                    // වෙන host එකක් නම් සාමාන්‍ය විදිහට download කරනවා
+                    res = await axios.get(fileUrl, {
+                        responseType: 'stream',
+                        timeout: 0,
+                        maxRedirects: 10,
+                        headers: { 
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        }
+                    });
                 }
 
                 const type = res.headers['content-type'] || "";
                 const size = Number(res.headers['content-length'] || 0);
 
-                // HTML තවමත් තියෙනවා නම් error
+                // HTML page එකක් ආවොත් (අපිට අහුවෙන්නේ නැති වෙන්න ඕන)
                 if (type.includes('text/html')) {
                     res.data.destroy();
-                    return reply(`❌ *File එක download කරන්න බෑ (private / limit exceeded).*\n🔗 ${fileUrl}`);
+                    return reply(`❌ *File එක download කරන්න බෑ (HTML page).*\n🔗 ${fileUrl}`);
                 }
 
                 if (size && size / 1024 / 1024 > MAX_MB) {
