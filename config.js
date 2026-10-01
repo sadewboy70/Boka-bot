@@ -51,5 +51,5 @@ module.exports = {
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
     GOOGLE_REFRESH_TOKEN: process.env.GOOGLE_REFRESH_TOKEN || "",
-    MAX_MOVIE_MB: Number(process.env.MAX_MOVIE_MB) || 95,
+    MAX_MOVIE_MB: Number(process.env.MAX_MOVIE_MB) || 2000,
 };
