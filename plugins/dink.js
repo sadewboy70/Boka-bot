@@ -5,7 +5,7 @@ const path = require('path');
 const config = require('../config');
 
 const API = "https://kavindu-download-web.vercel.app/api/dinkamovies/movie";
-const MAX_MB = Number(config.MAX_MOVIE_MB || 95); // WhatsApp safe limit
+const MAX_MB = Number(config.MAX_MOVIE_MB || 2000); // WhatsApp safe limit
 const TMP_DIR = path.join(__dirname, '../tmp');
 const activeDownloads = new Set();
 
