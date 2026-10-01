@@ -50,28 +50,6 @@ function getFileId(url) {
     return null;
 }
 
-// ── OAuth Access Token එක auto-renew කරන function එක ──
-let accessToken = null;
-let tokenExpiry = 0;
-
-async function getAccessToken() {
-    if (accessToken && Date.now() < tokenExpiry) return accessToken;
-    
-    const res = await axios.post('https://oauth2.googleapis.com/token', 
-        new URLSearchParams({
-            client_id: config.GOOGLE_CLIENT_ID,
-            client_secret: config.GOOGLE_CLIENT_SECRET,
-            refresh_token: config.GOOGLE_REFRESH_TOKEN,
-            grant_type: 'refresh_token'
-        }),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-    );
-    
-    accessToken = res.data.access_token;
-    tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000; // Expire වෙන්න 1 min කලින් renew කරනවා
-    return accessToken;
-}
-
 async function getDownloads(pageUrl) {
     const { data } = await axios.get(`${API}/dl?url=${encodeURIComponent(pageUrl)}`, { timeout: 25000 });
     if (!data?.status || !Array.isArray(data.downloads) || data.downloads.length === 0) return null;
@@ -81,7 +59,7 @@ async function getDownloads(pageUrl) {
 cmd({
     pattern: "dink",
     alias: ["dinkamovie"],
-    desc: "DinkaMovies search + WhatsApp document downloader (OAuth Fix)",
+    desc: "DinkaMovies search + WhatsApp document downloader (Secure Proxy API)",
     category: "movies",
     react: "🎬",
     filename: __filename
@@ -91,7 +69,7 @@ async (conn, mek, m, { from, q, reply }) => {
     const prefix = config.PREFIX || ".";
 
     try {
-        if (!q) return reply(`🔎 *කරුණාකර ඉත්‍රපටයක නමක් ලබා දෙන්න.*\n💡 _උදා: ${prefix}dink the croods_`);
+        if (!q) return reply(`🔎 *කරුණාකර චිත්‍රපටයක නමක් ලබා දෙන්න.*\n💡 _උදා: ${prefix}dink the croods_`);
         q = q.trim();
 
         // ───────────── STEP 3: Quality එක download කර WhatsApp එකට යවනවා ─────────────
@@ -123,19 +101,19 @@ async (conn, mek, m, { from, q, reply }) => {
 
                 // ── progress message එක ──
                 let msg = await conn.sendMessage(from, {
-                    text: `⏳ *Download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n${fileId ? '📂 *Source:* Google Drive (API)' : ''}\n\n> ${botName}`
+                    text: `⏳ *Download වෙමින්...*\n\n🎬 *${dlData.title || baseTitle}*\n🎞 *Quality:* ${dl.quality || "Unknown"}\n${fileId ? '📂 *Source:* Google Drive (Secure Proxy)' : ''}\n\n> ${botName}`
                 }, { quoted: mek });
 
-                // ── Step 1: Download Logic (Google Drive API vs Direct) ──
+                // ── Step 1: Download Logic (Secure Cloudflare API vs Direct) ──
                 let res;
                 if (fileId) {
-                    // Google Drive API v3 එක පාවිච්චි කරලා download කරනවා (IP block bypass)
-                    const token = await getAccessToken();
-                    res = await axios.get(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+                    // අපි හදපු අලුත් Cloudflare API එකෙන් Download කරනවා
+                    const proxyUrl = `https://sadew.sadewrashmika069.workers.dev/download?key=sadew123&id=${fileId}`;
+                    res = await axios.get(proxyUrl, {
                         responseType: 'stream',
                         timeout: 0,
                         headers: {
-                            'Authorization': `Bearer ${token}`
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
                         }
                     });
                 } else {
@@ -153,7 +131,7 @@ async (conn, mek, m, { from, q, reply }) => {
                 const type = res.headers['content-type'] || "";
                 const size = Number(res.headers['content-length'] || 0);
 
-                // HTML page එකක් ආවොත් (අපිට අහුවෙන්නේ නැති වෙන්න ඕන)
+                // HTML page එකක් ආවොත්
                 if (type.includes('text/html')) {
                     res.data.destroy();
                     return reply(`❌ *File එක download කරන්න බෑ (HTML page).*\n🔗 ${fileUrl}`);
@@ -229,7 +207,7 @@ async (conn, mek, m, { from, q, reply }) => {
             await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
             const dlData = await getDownloads(q);
-            if (!dlData) return reply("❌ *මෙම ඉත්‍රපටය සඳහා download ලින්ක්ස් හමු නොවීය.*");
+            if (!dlData) return reply("❌ *මෙම චිත්‍රපටය සඳහා download ලින්ක්ස් හමු නොවීය.*");
 
             let txt = `╭──「 *🎬 ᴅɪɴᴋᴀ ᴍᴏᴠɪᴇꜱ 🎬* 」──╮\n│\n`;
             txt += `│ *🎬 ɴᴀᴍᴇ:* ${dlData.title || "Unknown"}\n│\n`;
@@ -237,7 +215,7 @@ async (conn, mek, m, { from, q, reply }) => {
                 const q1 = dl.quality || "Unknown";
                 const showSize = dl.size && !String(q1).includes(dl.size);
                 txt += `*${i + 1}. 🎞* ${q1}${showSize ? ` (${dl.size})` : ""}\n`;
-                txt += `   ⤷ \`${prefix}dink dl ${i + 1} ${q}\`\n\n`;
+                txt += `   ⤷ \`${prefix}dink dl ${i + 1}${q}\`\n\n`;
             });
             txt += `> *Quality එක තෝරන්න, bot එක file එක WhatsApp එකටම එවයි.*`;
 
@@ -271,9 +249,9 @@ async (conn, mek, m, { from, q, reply }) => {
         txt += `│ *🔍 Search:* ${q}\n│\n`;
         movies.forEach((mv, i) => {
             txt += `*${i + 1}.* ${mv.title || "Unknown"}\n`;
-            txt += `   ⤷ \`${prefix}dink ${mv.link || mv.url}\`\n\n`;
+            txt += `   ⤷ \`${prefix}dink${mv.link || mv.url}\`\n\n`;
         });
-        txt += `> *පහතින් ඕනෑම ඉත්‍රපටයක් තෝරන්න:*`;
+        txt += `> *පහතින් ඕනෑම චිත්‍රපටයක් තෝරන්න:*`;
 
         const buttons = movies.map((mv) => {
             const title = mv.title || "Unknown";
