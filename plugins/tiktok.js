@@ -14,7 +14,6 @@ cmd({
 },
 async (conn, mek, m, { from, args, q, reply }) => {
     try {
-        // 🟢 1. Link එක ගන්න එක වඩාත් නිවැරදි කළා (Reply කරත් වැඩ කරන විදිහට)
         let query = q || args.join(" ");
         
         if (!query && mek.message?.extendedTextMessage?.contextInfo?.quotedMessage) {
@@ -24,26 +23,25 @@ async (conn, mek, m, { from, args, q, reply }) => {
 
         if (!query) return reply("🔗 *ᴘʟᴇᴀꜱᴇ ꜱᴇɴᴅ ᴀ ᴛɪᴋᴛᴏᴋ ʟɪɴᴋ!*");
 
-        // 🟢 2. වචන අස්සේ ලින්ක් එක තිබ්බත් හරියටම ඒක හොයාගන්න Regex එක හැදුවා
         const urlMatch = query.match(/https?:\/\/[^\s]*tiktok\.com[^\s]*/i);
         
         if (!urlMatch) {
             return reply("❌ *ɪɴᴠᴀʟɪᴅ ᴛɪᴋᴛᴏᴋ ʟɪɴᴋ!*");
         }
 
-        const finalUrl = urlMatch[0]; // හරියටම URL එක විතරක් වෙන් කරගන්නවා
+        const finalUrl = urlMatch[0];
 
         await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
         let videoUrl, title, channelName, views, likes;
 
-        // 🟢 3. PRIMARY API (TikWM)
         try {
+            // 🟢 1. PRIMARY API (TikWM)
             const tikwmRes = await axios.get(`https://www.tikwm.com/api/?url=${encodeURIComponent(finalUrl)}&hd=1`, { timeout: 4000 });
             const tikdata = tikwmRes.data;
 
             if (!tikdata || tikdata.code !== 0 || !tikdata.data) {
-                throw new Error("TikWM Limit Reached or Blocked");
+                throw new Error("TikWM Fail");
             }
             
             const data = tikdata.data;
@@ -54,22 +52,23 @@ async (conn, mek, m, { from, args, q, reply }) => {
             likes = data.digg_count || 0;
 
         } catch (err) {
-            console.log("TikWM Failed/Timeout, instantly switching to Backup API...");
+            console.log("TikWM Failed, instantly switching to Backup API...");
             
-            // 🟢 4. BACKUP API (Kavindu API)
+            // 🟢 2. BACKUP API (Kavindu API)
             const kavinduRes = await axios.get(`https://kavindu-download-web.vercel.app/api/tiktok?url=${encodeURIComponent(finalUrl)}`, { timeout: 10000 });
             const kavdata = kavinduRes.data;
 
-            if (!kavdata || kavdata.status !== true || !kavdata.data) {
+            // 🛑 මෙන්න මෙතන තමා කලින් වැරදිලා තිබ්බේ. (kavdata.code !== 0) විදිහට හැදුවා.
+            if (!kavdata || kavdata.code !== 0 || !kavdata.data) {
                 return reply("❌ *Main API & Backup API දෙකම මේ වෙලාවේ වැඩ කරන්නේ නෑ!*");
             }
 
             const data = kavdata.data;
-            videoUrl = data.nowm || data.hdplay || data.play || data.video;
+            videoUrl = data.hdplay || data.play || data.nowm || data.video;
             title = data.title || data.description || "No Description";
             channelName = data.author?.nickname || data.author || "Unknown Channel";
-            views = "N/A (Backup API)"; 
-            likes = "N/A (Backup API)";
+            views = data.play_count || "N/A (Backup API)"; 
+            likes = data.digg_count || "N/A (Backup API)";
         }
 
         if (!videoUrl) return reply("❌ *ᴠɪᴅᴇᴏ ʟɪɴᴋ ɴᴏᴛ ꜰᴏᴜɴᴅ!*");
