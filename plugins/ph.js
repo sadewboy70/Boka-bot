@@ -1,6 +1,9 @@
 const { cmd } = require('../command');
 const axios = require('axios');
 
+// 🟢 තාවකාලිකව Download Links මතක තබා ගැනීමට Cache එකක්
+const videoCache = new Map();
+
 // ──────────────────────────────────────────────
 // 1. SEARCH COMMAND - (.ph)
 // ──────────────────────────────────────────────
@@ -25,14 +28,12 @@ async (conn, mek, m, { from, args, reply }) => {
             return reply("❌ *ප්‍රතිඵල කිසිවක් සොයාගත නොහැකි විය!*");
         }
 
-        // WhatsApp Crash වෙන එක නවත්වන්න Results 10කට සීමා කරලා තියෙන්නේ
         const results = res.data.results.slice(0, 10); 
 
         let msg = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n┊ 🔞 *SEARCH RESULTS* 🔞\n┊ 🔍 *Query:* ${query}\n╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n> පහතින් අවශ්‍ය වීඩියෝව තෝරන්න ⬇️\n\n> ꜱᴀᴅᴇᴡ ᴍɪɴɪ ᴠ1.0`;
         
         let buttons = [];
         results.forEach((vid, index) => {
-            // Button Text එක අකුරු 20ට වඩා දිග නම් කොට කරනවා
             let shortTitle = vid.title.length > 20 ? vid.title.substring(0, 20) + "..." : vid.title;
             buttons.push({
                 buttonId: `.phdetail ${vid.link}`, 
@@ -41,7 +42,6 @@ async (conn, mek, m, { from, args, reply }) => {
             });
         });
 
-        // Thumbnail එක අයින් කරලා කෙලින්ම Text Button මැසේජ් එකක් විදිහට හැදුවා (Error 403 එන්නේ නෑ)
         const buttonMessage = {
             text: msg,
             footer: "SADEW MINI",
@@ -86,7 +86,11 @@ async (conn, mek, m, { from, args, reply }) => {
         const title = data.title || "Unknown Video";
         const duration = data.duration || "N/A";
         
-        let msg = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n┊ 🔞 *VIDEO DETAILS* 🔞\n┊\n┊ 🎬 *Title:* ${title}\n┊ ⏱️ *Duration:* ${duration}\n╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n> පහතින් අවශ්‍ය Quality එක තෝරන්න ⬇️`;
+        // 🟢 ඩේටා ටික Cache එකට දානවා (විනාඩි 15කට පස්සේ Auto-Delete වෙනවා)
+        videoCache.set(url, data);
+        setTimeout(() => videoCache.delete(url), 15 * 60 * 1000);
+
+        let msg = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n┊ 🔞 *VIDEO DETAILS* 🔞\n┊\n┊ 🎬 *Title:* ${title}\n┊ ⏱️ *Duration:* ${duration}\n╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n> පහතින් අවශ්‍ය Quality එක තෝරන්න ⬇️️`;
 
         let buttons = [];
         data.videos.forEach(v => {
@@ -97,7 +101,6 @@ async (conn, mek, m, { from, args, reply }) => {
             });
         });
 
-        // මෙතනිනුත් Thumbnail එක අයින් කළා 
         const buttonMessage = {
             text: msg,
             footer: "SADEW MINI",
@@ -110,6 +113,9 @@ async (conn, mek, m, { from, args, reply }) => {
 
     } catch (e) {
         console.error(e);
+        if (e.response && e.response.status === 429) {
+            return reply("⚠️ *API එක Rate Limit වී ඇත. තත්පර 15කින් නැවත උත්සාහ කරන්න.*");
+        }
         reply(`❌ *Error:* ${e.message}`);
     }
 });
@@ -133,16 +139,23 @@ async (conn, mek, m, { from, args, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬆', key: mek.key } });
 
-        const apiUrl = `https://ph-dz.vercel.app/download?url=${encodeURIComponent(url)}`;
-        const res = await axios.get(apiUrl, { timeout: 30000 });
-        
-        if (!res.data || !res.data.success || !res.data.data) {
-            return reply("❌ *වීඩියෝව ලබාගැනීමට නොහැකි විය!*");
+        // 🟢 ආයෙත් API එකට කතා කරන්නේ නැතුව කෙලින්ම Cache එකෙන් ගන්නවා
+        let data = videoCache.get(url);
+
+        // Cache එකේ නැත්නම් විතරක් API එකට කතා කරනවා
+        if (!data) {
+            const apiUrl = `https://ph-dz.vercel.app/download?url=${encodeURIComponent(url)}`;
+            const res = await axios.get(apiUrl, { timeout: 30000 });
+            if (res.data?.success && res.data?.data) {
+                data = res.data.data;
+            }
         }
 
-        const data = res.data.data;
+        if (!data || !data.videos) {
+            return reply("❌ *වීඩියෝ දත්ත සොයාගත නොහැකි විය. නැවත .phdetail උත්සාහ කරන්න.*");
+        }
+
         const videos = data.videos;
-        
         let finalVideoUrl = "";
         const targetVideo = videos.find(v => v.quality === selectedQuality);
 
@@ -167,6 +180,9 @@ async (conn, mek, m, { from, args, reply }) => {
 
     } catch (e) {
         console.error(e);
+        if (e.response && e.response.status === 429) {
+            return reply("⚠️ *API එක Rate Limit වී ඇත. තත්පර කිහිපයකින් නැවත උත්සාහ කරන්න.*");
+        }
         reply(`❌ *Error:* ${e.message}`);
         await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
     }
