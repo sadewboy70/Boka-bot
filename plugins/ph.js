@@ -1,7 +1,10 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const fsSync = require('fs');
+const os = require('os');
+const path = require('path');
 
-// 🟢 තාවකාලිකව Download Links මතක තබා ගැනීමට Cache එකක්
+// 🟢 තාවකාලිකව Download Links මතක තබා ගැනීමට Cache එකක් (Error 429 විසඳුම)
 const videoCache = new Map();
 
 // ──────────────────────────────────────────────
@@ -90,7 +93,7 @@ async (conn, mek, m, { from, args, reply }) => {
         videoCache.set(url, data);
         setTimeout(() => videoCache.delete(url), 15 * 60 * 1000);
 
-        let msg = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n┊ 🔞 *VIDEO DETAILS* 🔞\n┊\n┊ 🎬 *Title:* ${title}\n┊ ⏱️ *Duration:* ${duration}\n╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n> පහතින් අවශ්‍ය Quality එක තෝරන්න ⬇️️`;
+        let msg = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n┊ 🔞 *VIDEO DETAILS* 🔞\n┊\n┊ 🎬 *Title:* ${title}\n┊ ⏱️ *Duration:* ${duration}\n╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n> පහතින් අවශ්‍ය Quality එක තෝරන්න ⬇`;
 
         let buttons = [];
         data.videos.forEach(v => {
@@ -121,7 +124,7 @@ async (conn, mek, m, { from, args, reply }) => {
 });
 
 // ──────────────────────────────────────────────
-// 3. VIDEO STREAM COMMAND - (.phvid) Quality Download
+// 3. VIDEO STREAM COMMAND - (.phvid) Quality Download (Large File Support)
 // ──────────────────────────────────────────────
 cmd({
     pattern: "phvid",
@@ -137,12 +140,12 @@ async (conn, mek, m, { from, args, reply }) => {
 
         if (!selectedQuality || !url) return reply("❌ *දෝෂයක්! Quality හෝ Link එකක් නොමැත.*");
 
-        await conn.sendMessage(from, { react: { text: '⬆', key: mek.key } });
+        // ඩවුන්ලෝඩ් වෙන්න පටන් ගත්ත බව පෙන්වන්න
+        await conn.sendMessage(from, { react: { text: '⬇️', key: mek.key } });
 
         // 🟢 ආයෙත් API එකට කතා කරන්නේ නැතුව කෙලින්ම Cache එකෙන් ගන්නවා
         let data = videoCache.get(url);
 
-        // Cache එකේ නැත්නම් විතරක් API එකට කතා කරනවා
         if (!data) {
             const apiUrl = `https://ph-dz.vercel.app/download?url=${encodeURIComponent(url)}`;
             const res = await axios.get(apiUrl, { timeout: 30000 });
@@ -169,13 +172,39 @@ async (conn, mek, m, { from, args, reply }) => {
 
         const caption = `🎬 *${data.title}*\n✨ *Quality:* ${selectedQuality}\n\n> ꜱᴀᴅᴇᴡ ᴍɪɴɪ ᴠ1.0`;
 
+        // 🟢 1. ලොකු වීඩියෝ සර්වර් එකට Download කිරීම
+        const tempVideoPath = path.join(os.tmpdir(), `phvid_${Date.now()}.mp4`);
+        const responseStream = await axios({
+            method: 'GET',
+            url: finalVideoUrl,
+            responseType: 'stream',
+            headers: { "User-Agent": "Mozilla/5.0" }
+        });
+
+        const writer = fsSync.createWriteStream(tempVideoPath);
+        responseStream.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', (err) => {
+                console.error("Download Stream Error:", err);
+                reject(err);
+            });
+        });
+
+        // සර්වර් එකට ඩවුන්ලෝඩ් වුණාට පස්සේ WhatsApp එකට යවන බව පෙන්වන්න
+        await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
+
+        // 🟢 2. WhatsApp වෙත යැවීම (readFileSync අයින් කරලා Local URL හරහා Stream කිරීම)
         await conn.sendMessage(from, {
-            document: { url: finalVideoUrl },
+            document: { url: tempVideoPath },
             mimetype: 'video/mp4',
             fileName: `Sadew_Mini_${Date.now()}.mp4`,
             caption: caption
         }, { quoted: mek });
 
+        // 🟢 3. යැව්වට පස්සේ Temp File එක මකා දැමීම
+        if (fsSync.existsSync(tempVideoPath)) fsSync.unlinkSync(tempVideoPath);
         await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
 
     } catch (e) {
