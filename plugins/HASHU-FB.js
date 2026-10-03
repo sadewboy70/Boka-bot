@@ -11,16 +11,21 @@ cmd({
 },
 async (conn, mek, m, { from, args, reply }) => {
     try {
-        const fbUrl = args[0];
-        if (!fbUrl) return reply("🔗 *කරුණාකර Facebook Video Link එකක් ලබා දෙන්න!*");
+        const fullArgs = args.join(" ");
+        if (!fullArgs) return reply("🔗 *කරුණාකර Facebook Video Link එකක් ලබා දෙන්න!*");
 
-        if (!fbUrl.includes('facebook.com') && !fbUrl.includes('fb.watch') && !fbUrl.includes('fb.gg')) {
+        // ලින්ක් එකක් විතරක් වෙන් කරගැනීම (අකුරු මැද ලින්ක් එකක් තිබ්බත් වැඩ කරනවා)
+        const urlMatch = fullArgs.match(/https?:\/\/[^\s]+/i);
+        if (!urlMatch) return reply("🔗 *කරුණාකර Facebook Video Link එකක් ලබා දෙන්න!*");
+        const fbUrl = urlMatch[0];
+
+        // ඕනෑම Facebook ලින්ක් ෆෝමැට් එකක් අඳුරගැනීම (share/r, fb.watch, fb.gg ඔක්කොම සපෝට්)
+        if (!fbUrl.includes('facebook') && !fbUrl.includes('fb')) {
             return reply("❌ *මෙය නිවැරදි Facebook Link එකක් නොවේ!*");
         }
 
         await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
 
-        // API Request යැවීම
         const apiKey = "kx_27d485da9d2ec5dcfe3b37fa8713a8e0";
         const apiUrl = `https://api.kurox.site/api/v1/facebook?apiKey=${apiKey}&url=${encodeURIComponent(fbUrl)}&type=video`;
 
@@ -47,9 +52,9 @@ async (conn, mek, m, { from, args, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
 
-        // 🟢 RAM Buffer එකක් නැතුව කෙලින්ම URL එක හරහා Direct Stream කිරීම
+        // 🟢 RAM එක පාවිච්චි කරන්නේ නැතුව කෙලින්ම API URL එකෙන් WhatsApp එකට Stream කිරීම
         await conn.sendMessage(from, {
-            document: { url: videoUrl }, // කෙලින්ම API එකෙන් ආපු ලින්ක් එක දෙනවා
+            document: { url: videoUrl }, 
             mimetype: 'video/mp4',
             fileName: `Sadew_Mini_FB_${Date.now()}.mp4`,
             caption: caption
