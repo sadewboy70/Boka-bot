@@ -1,11 +1,12 @@
 const { cmd } = require('../command');
 const axios = require('axios');
+const config = require('../config'); // 🟢 Config ෆයිල් එක කනෙක්ට් කිරීම
 
 cmd({
     pattern: "fb",
     alias: ["facebook", "fbdl"],
     react: "📥",
-    desc: "Download Facebook videos using Kurox API (Direct Stream)",
+    desc: "Download Facebook videos using Kurox API (Direct HD Video)",
     category: "download",
     filename: __filename
 },
@@ -14,12 +15,10 @@ async (conn, mek, m, { from, args, reply }) => {
         const fullArgs = args.join(" ");
         if (!fullArgs) return reply("🔗 *කරුණාකර Facebook Video Link එකක් ලබා දෙන්න!*");
 
-        // ලින්ක් එකක් විතරක් වෙන් කරගැනීම (අකුරු මැද ලින්ක් එකක් තිබ්බත් වැඩ කරනවා)
         const urlMatch = fullArgs.match(/https?:\/\/[^\s]+/i);
         if (!urlMatch) return reply("🔗 *කරුණාකර Facebook Video Link එකක් ලබා දෙන්න!*");
         const fbUrl = urlMatch[0];
 
-        // ඕනෑම Facebook ලින්ක් ෆෝමැට් එකක් අඳුරගැනීම (share/r, fb.watch, fb.gg ඔක්කොම සපෝට්)
         if (!fbUrl.includes('facebook') && !fbUrl.includes('fb')) {
             return reply("❌ *මෙය නිවැරදි Facebook Link එකක් නොවේ!*");
         }
@@ -41,22 +40,25 @@ async (conn, mek, m, { from, args, reply }) => {
         }
 
         const videoUrl = res.data.url;
-        const title = res.data.title || "Facebook Video";
+        const title = res.data.title || "Facebook Video"; 
+        const quality = res.data.quality || "HD";
+
+        // 🟢 Config එකෙන් නම ලබා ගැනීම (ඔයාගේ config එකේ තියෙන නමට මේක වෙනස් කරගන්න පුළුවන්)
+        const botName = config.BOT_NAME || config.ALIVE_NAME || "Bot";
+
         const caption = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 📘 *FACEBOOK DOWNLOADER* 
 ┊
-┊ 🎬 *Title:* ${title.substring(0, 50)}...
+┊ 🎬 *Description:* ${title}
+┊ ✨ *Quality:* ${quality}
 ╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 
-> ꜱᴀᴅᴇᴡ ᴍɪɴɪ ᴠ1.0`;
+> ${botName}`;
 
         await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
 
-        // 🟢 RAM එක පාවිච්චි කරන්නේ නැතුව කෙලින්ම API URL එකෙන් WhatsApp එකට Stream කිරීම
         await conn.sendMessage(from, {
-            document: { url: videoUrl }, 
-            mimetype: 'video/mp4',
-            fileName: `Sadew_Mini_FB_${Date.now()}.mp4`,
+            video: { url: videoUrl }, 
             caption: caption
         }, { quoted: mek });
 
