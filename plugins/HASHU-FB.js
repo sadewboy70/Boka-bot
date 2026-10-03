@@ -6,7 +6,7 @@ cmd({
     pattern: "fb",
     alias: ["facebook", "fbdl"],
     react: "📥",
-    desc: "Download Facebook videos using Kurox API (Direct HD Video)",
+    desc: "Download Facebook videos using Kurox API (Direct Stream)",
     category: "download",
     filename: __filename
 },
@@ -40,17 +40,17 @@ async (conn, mek, m, { from, args, reply }) => {
         }
 
         const videoUrl = res.data.url;
-        // Caption එකට සම්පූර්ණ විස්තරයම එකතු කිරීම
-        const title = res.data.title || "Facebook Video"; 
+        const title = res.data.title || "Facebook Video";
         const quality = res.data.quality || "HD";
-
-        // ඔයාගේ config.js එකේ තියෙන SADEW -MD-MINI-V6 නම මෙතනට ඔටෝ එනවා
+        
+        // Config ෆයිල් එකෙන් නම ගන්නවා
         const botName = config.BOT_NAME || "SADEW MINI";
 
+        // ඔයාගේ පරණ කෝඩ් එකේ තිබ්බ විදිහටම Title එක හැදුවා
         const caption = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 📘 *FACEBOOK DOWNLOADER* 
 ┊
-┊ 🎬 *Description:* ${title}
+┊ 🎬 *Title:* ${title.substring(0, 150)}...
 ┊ ✨ *Quality:* ${quality}
 ╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 
@@ -58,12 +58,11 @@ async (conn, mek, m, { from, args, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
 
-        // 🟢 mimetype එක අනිවාර්ය කර ඇත, එබැවින් Caption එක drop වන්නේ නැත.
+        // Document එක වෙනුවට Video ෆෝමැට් එකෙන්ම යවනවා
         await conn.sendMessage(from, {
             video: { url: videoUrl }, 
             caption: caption,
-            mimetype: 'video/mp4',
-            fileName: `Sadew_Mini_FB_${Date.now()}.mp4`
+            mimetype: 'video/mp4'
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
