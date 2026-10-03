@@ -6,7 +6,7 @@ cmd({
     pattern: "fb",
     alias: ["facebook", "fbdl"],
     react: "📥",
-    desc: "Download Facebook videos using Kurox API (Direct Stream)",
+    desc: "Download Facebook videos using Kurox API",
     category: "download",
     filename: __filename
 },
@@ -28,9 +28,11 @@ async (conn, mek, m, { from, args, reply }) => {
         const apiKey = "kx_27d485da9d2ec5dcfe3b37fa8713a8e0";
         const apiUrl = `https://api.kurox.site/api/v1/facebook?apiKey=${apiKey}&url=${encodeURIComponent(fbUrl)}&type=video`;
 
+        // 🟢 API එකට Browser එකකින් එනවා වගේ පෙන්නන්න User-Agent එකක් දානවා
         const res = await axios.get(apiUrl, {
             headers: {
-                "X-API-KEY": apiKey
+                "X-API-KEY": apiKey,
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             },
             timeout: 60000 
         });
@@ -43,14 +45,15 @@ async (conn, mek, m, { from, args, reply }) => {
         const title = res.data.title || "Facebook Video";
         const quality = res.data.quality || "HD";
         
-        // Config ෆයිල් එකෙන් නම ගන්නවා
+        // 🟢 Title එක අකුරු 150ට වඩා දිග නම් විතරක් අගට "..." දානවා. නැත්නම් ඒ විදිහටම තියනවා.
+        const displayTitle = title.length > 150 ? title.substring(0, 150) + "..." : title;
+        
         const botName = config.BOT_NAME || "SADEW MINI";
 
-        // ඔයාගේ පරණ කෝඩ් එකේ තිබ්බ විදිහටම Title එක හැදුවා
         const caption = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 📘 *FACEBOOK DOWNLOADER* 
 ┊
-┊ 🎬 *Title:* ${title.substring(0, 150)}...
+┊ 🎬 *Title:* ${displayTitle}
 ┊ ✨ *Quality:* ${quality}
 ╰┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 
@@ -58,7 +61,6 @@ async (conn, mek, m, { from, args, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
 
-        // Document එක වෙනුවට Video ෆෝමැට් එකෙන්ම යවනවා
         await conn.sendMessage(from, {
             video: { url: videoUrl }, 
             caption: caption,
