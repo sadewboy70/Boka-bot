@@ -1,6 +1,6 @@
 const { cmd } = require('../command');
 const axios = require('axios');
-const config = require('../config'); // 🟢 Config ෆයිල් එක කනෙක්ට් කිරීම
+const config = require('../config');
 
 cmd({
     pattern: "fb",
@@ -40,11 +40,12 @@ async (conn, mek, m, { from, args, reply }) => {
         }
 
         const videoUrl = res.data.url;
+        // Caption එකට සම්පූර්ණ විස්තරයම එකතු කිරීම
         const title = res.data.title || "Facebook Video"; 
         const quality = res.data.quality || "HD";
 
-        // 🟢 Config එකෙන් නම ලබා ගැනීම (ඔයාගේ config එකේ තියෙන නමට මේක වෙනස් කරගන්න පුළුවන්)
-        const botName = config.BOT_NAME || config.ALIVE_NAME || "Bot";
+        // ඔයාගේ config.js එකේ තියෙන SADEW -MD-MINI-V6 නම මෙතනට ඔටෝ එනවා
+        const botName = config.BOT_NAME || "SADEW MINI";
 
         const caption = `╭┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
 ┊ 📘 *FACEBOOK DOWNLOADER* 
@@ -57,9 +58,12 @@ async (conn, mek, m, { from, args, reply }) => {
 
         await conn.sendMessage(from, { react: { text: '⬆️', key: mek.key } });
 
+        // 🟢 mimetype එක අනිවාර්ය කර ඇත, එබැවින් Caption එක drop වන්නේ නැත.
         await conn.sendMessage(from, {
             video: { url: videoUrl }, 
-            caption: caption
+            caption: caption,
+            mimetype: 'video/mp4',
+            fileName: `Sadew_Mini_FB_${Date.now()}.mp4`
         }, { quoted: mek });
 
         await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
