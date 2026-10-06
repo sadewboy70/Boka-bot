@@ -27,6 +27,7 @@
     "hercai": "^12.4.0",
     "jimp": "^1.6.1",
     "moment-timezone": "^0.6.0",
+    ​"@distube/ytdl-core": "latest"
     "mongoose": "8.16.0",
     "movanest": "^1.1.6",
     "niyox": "^0.0.3",
